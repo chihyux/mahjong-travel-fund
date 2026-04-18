@@ -1,0 +1,101 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===== 基礎重置 ===== */
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: 'Noto Sans TC', ui-sans-serif, system-ui, sans-serif;
+  font-size: 18px;             /* 長輩友善基準 */
+  line-height: 1.6;
+  background: #F3F1E9;
+  color: #1A2420;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "tnum" on;
+}
+
+/* 禁止手機雙擊縮放 */
+button, a { touch-action: manipulation; }
+
+/* 數字字型 */
+.num {
+  font-family: 'Noto Sans TC', ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 卡片標準 */
+.card {
+  background: #FFFFFF;
+  border-radius: 20px;
+  box-shadow: 0 1px 3px rgba(26,36,32,0.04), 0 8px 24px rgba(26,36,32,0.06);
+}
+
+/* 進度條 */
+.progress-track {
+  height: 14px;
+  background: #E5E0D0;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4A6B4A, #D9A441);
+  border-radius: 999px;
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 按鈕壓下回饋 */
+.press:active { transform: scale(0.98); }
+
+/* 骨架屏呼吸 */
+@keyframes shimmer {
+  0% { opacity: 0.4; }
+  50% { opacity: 0.7; }
+  100% { opacity: 0.4; }
+}
+.shimmer { animation: shimmer 1.6s ease-in-out infinite; }
+
+/* Input 基本樣式 */
+input[type="text"],
+input[type="number"],
+input[type="password"],
+input[type="date"],
+textarea {
+  width: 100%;
+  min-height: 56px;
+  font-size: 18px;
+  padding: 12px 16px;
+  border: 2px solid #D8D3C2;
+  border-radius: 12px;
+  background: #FFFFFF;
+  color: #1A2420;
+  font-family: inherit;
+  transition: border-color 0.15s;
+}
+input[type="date"] { padding: 0 16px; }
+textarea { min-height: 100px; padding: 12px 16px; resize: vertical; }
+input:focus,
+textarea:focus {
+  outline: none;
+  border-color: #4A6B4A;
+}
+
+/* Toast 動畫 */
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(12px) translateX(-50%); }
+  to { opacity: 1; transform: translateY(0) translateX(-50%); }
+}
+.toast-enter { animation: toast-in 0.24s cubic-bezier(0.2, 0.8, 0.2, 1); }
+
+/* 為底部 tab 留空間（手機）*/
+.pb-tab { padding-bottom: 88px; }
+@media (min-width: 768px) {
+  .pb-tab { padding-bottom: 24px; }
+}
