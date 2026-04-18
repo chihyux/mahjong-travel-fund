@@ -7,14 +7,21 @@ export default function Login({ onDone }) {
   const { actions, data } = useStore();
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
+  const [errMsg, setErrMsg] = useState('');
 
   const submit = async (e) => {
     e.preventDefault();
     if (!password.trim()) return;
     setBusy(true);
+    setErrMsg('');
     const ok = await actions.login(password.trim());
     setBusy(false);
-    if (ok) onDone();
+    if (ok) {
+      onDone();
+    } else {
+      setErrMsg('密碼錯誤，請重新輸入');
+      setPassword('');
+    }
   };
 
   return (
@@ -34,10 +41,16 @@ export default function Login({ onDone }) {
             <input
               type="password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => { setPassword(e.target.value); if (errMsg) setErrMsg(''); }}
               autoFocus
               placeholder="請輸入管理員密碼"
+              aria-invalid={!!errMsg}
             />
+            {errMsg && (
+              <div role="alert" className="mt-2 text-[15px] text-red-700">
+                {errMsg}
+              </div>
+            )}
           </div>
 
           <Button type="submit" disabled={busy || !password.trim()}>
