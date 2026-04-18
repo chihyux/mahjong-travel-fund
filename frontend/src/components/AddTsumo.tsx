@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useStore } from '../hooks/useStore';
-import { todayISO, fmtMoney, recentTsumoPlayers, asBool } from '../lib/utils';
+import { asBool, fmtMoney, recentTsumoPlayers, todayISO } from '../lib/utils';
+import type { Id } from '../types';
 import Card from './ui/Card';
 import Button from './ui/Button';
 import Stepper from './ui/Stepper';
@@ -8,16 +9,20 @@ import PlayerChips from './ui/PlayerChips';
 
 const TSUMO_AMOUNT = 30;
 
-export default function AddTsumo({ onDone }) {
+interface AddTsumoProps {
+  onDone: () => void;
+}
+
+export default function AddTsumo({ onDone }: AddTsumoProps) {
   const { data, actions } = useStore();
   const { players, tsumos, settings } = data;
   const symbol = settings.currency_symbol || '$';
 
-  const activePlayers = players.filter(p => asBool(p.active));
+  const activePlayers = players.filter((p) => asBool(p.active));
   const recent = recentTsumoPlayers(tsumos, 3);
 
   const [date, setDate] = useState(todayISO());
-  const [playerId, setPlayerId] = useState(null);
+  const [playerId, setPlayerId] = useState<Id | null>(null);
   const [count, setCount] = useState(1);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
@@ -44,17 +49,11 @@ export default function AddTsumo({ onDone }) {
         </div>
 
         <div className="space-y-5">
-          {/* 日期 */}
           <div>
             <label className="block text-[18px] font-medium mb-2">日期</label>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-            />
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
 
-          {/* 玩家 */}
           <div>
             <label className="block text-[18px] font-medium mb-2">誰自摸？</label>
             {activePlayers.length === 0 ? (
@@ -71,7 +70,6 @@ export default function AddTsumo({ onDone }) {
             )}
           </div>
 
-          {/* 次數 */}
           <div>
             <label className="block text-[18px] font-medium mb-2">次數</label>
             <Stepper value={count} onChange={setCount} min={1} max={20} />
@@ -80,7 +78,6 @@ export default function AddTsumo({ onDone }) {
             </div>
           </div>
 
-          {/* 備註 */}
           <div>
             <label className="block text-[18px] font-medium mb-2">備註（選填）</label>
             <input
@@ -91,18 +88,14 @@ export default function AddTsumo({ onDone }) {
             />
           </div>
 
-          {/* 總額 */}
           <div className="p-5 rounded-2xl bg-sage/10 border-2 border-sage/30">
             <div className="text-[16px] text-sage-deep font-medium mb-1">本次捐款</div>
-            <div className="num text-[36px] text-sage-deep">
-              {fmtMoney(total, symbol)}
-            </div>
+            <div className="num text-[36px] text-sage-deep">{fmtMoney(total, symbol)}</div>
             <div className="text-[15px] text-ink-3 mt-1">
               {fmtMoney(TSUMO_AMOUNT, symbol)} × {count}
             </div>
           </div>
 
-          {/* 按鈕 */}
           <div className="grid grid-cols-2 gap-3 pt-2">
             <Button variant="secondary" size="md" onClick={onDone} disabled={busy}>
               取消

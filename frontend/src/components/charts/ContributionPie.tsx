@@ -1,8 +1,27 @@
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
+import type { LeaderboardEntry } from '../../lib/utils';
 
-const COLORS = ['#2F4A2F', '#4A6B4A', '#D9A441', '#B8781F', '#8A8074', '#6B7A6B', '#C48A3E', '#3F4A44'];
+const COLORS = [
+  '#2F4A2F',
+  '#4A6B4A',
+  '#D9A441',
+  '#B8781F',
+  '#8A8074',
+  '#6B7A6B',
+  '#C48A3E',
+  '#3F4A44'
+];
 
-export default function ContributionPie({ data }) {
+interface ContributionPieProps {
+  data: LeaderboardEntry[];
+}
+
+interface PieLabelArg {
+  name: string;
+  percent: number;
+}
+
+export default function ContributionPie({ data }: ContributionPieProps) {
   const chartData = data
     .filter((d) => d.total > 0)
     .map((d) => ({ name: d.name, value: d.total }));
@@ -23,7 +42,7 @@ export default function ContributionPie({ data }) {
             paddingAngle={2}
             stroke="#FFFFFF"
             strokeWidth={3}
-            label={(e) => `${e.name} ${(e.percent * 100).toFixed(0)}%`}
+            label={(e: PieLabelArg) => `${e.name} ${(e.percent * 100).toFixed(0)}%`}
             labelLine={false}
             style={{ fontSize: 14, fontWeight: 500 }}
           >

@@ -1,5 +1,12 @@
 import { useStore } from '../hooks/useStore';
-import { fmtMoney, fmtRelativeDate, buildLeaderboard, calcBalance, playerName } from '../lib/utils';
+import {
+  buildLeaderboard,
+  calcBalance,
+  fmtMoney,
+  fmtRelativeDate,
+  playerName
+} from '../lib/utils';
+import type { ViewKey } from '../types';
 import Card from './ui/Card';
 import RankBadge from './ui/RankBadge';
 import Progress from './ui/Progress';
@@ -7,8 +14,12 @@ import Button from './ui/Button';
 import Skeleton from './ui/Skeleton';
 import ContributionPie from './charts/ContributionPie';
 
-export default function Dashboard({ onNav }) {
-  const { data, loading, isAdmin, actions } = useStore();
+interface DashboardProps {
+  onNav: (next: ViewKey) => void;
+}
+
+export default function Dashboard({ onNav }: DashboardProps) {
+  const { data, loading, isAdmin } = useStore();
   const { players, tsumos, settlements, withdrawals, settings } = data;
 
   const symbol = settings.currency_symbol || '$';
@@ -21,31 +32,33 @@ export default function Dashboard({ onNav }) {
   const progress = goal > 0 ? Math.min(100, (balance / goal) * 100) : 0;
   const remaining = Math.max(0, goal - balance);
 
-  // 最近記錄
-  const recentTsumos = [...(tsumos || [])].sort((a, b) =>
-    new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-  ).slice(0, 3);
-  const recentSettles = [...(settlements || [])].sort((a, b) =>
-    new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-  ).slice(0, 3);
+  const recentTsumos = [...(tsumos ?? [])]
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, 3);
+  const recentSettles = [...(settlements ?? [])]
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, 3);
 
   if (loading) {
     return (
       <div className="space-y-6">
-        <Card><Skeleton h={80} className="mb-4" /><Skeleton h={40} /></Card>
-        <Card><Skeleton h={200} /></Card>
+        <Card>
+          <Skeleton h={80} className="mb-4" />
+          <Skeleton h={40} />
+        </Card>
+        <Card>
+          <Skeleton h={200} />
+        </Card>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      {/* Hero：基金金額 */}
       <Card>
         <div className="text-[18px] font-medium text-ink-2 mb-1">🌿 目前基金</div>
         <div className="num text-hero md:text-hero-sm text-ink">{fmtMoney(balance, symbol)}</div>
 
-        {/* 目標進度 */}
         {goal > 0 && (
           <div className="mt-5 p-4 rounded-2xl bg-hint border border-divider">
             <div className="flex items-baseline justify-between mb-2 gap-2">
@@ -55,7 +68,9 @@ export default function Dashboard({ onNav }) {
             <Progress value={balance} max={goal} />
             <div className="text-[18px] text-ink-2 mt-2">
               {remaining > 0 ? (
-                <>還差 <span className="num text-ink">{fmtMoney(remaining, symbol)}</span> 就達標</>
+                <>
+                  還差 <span className="num text-ink">{fmtMoney(remaining, symbol)}</span> 就達標
+                </>
               ) : (
                 <span className="text-sage-deep font-bold">🎉 已達標，可以出發囉！</span>
               )}
@@ -63,7 +78,6 @@ export default function Dashboard({ onNav }) {
           </div>
         )}
 
-        {/* 小計 */}
         <div className="mt-6 p-4 rounded-2xl bg-hint grid grid-cols-2 gap-4">
           <div>
             <div className="text-[16px] text-ink-3 mb-1">累計收入</div>
@@ -76,18 +90,22 @@ export default function Dashboard({ onNav }) {
         </div>
       </Card>
 
-      {/* 管理員快捷按鈕 */}
       {isAdmin && (
         <Card>
           <div className="grid gap-3">
-            <Button icon="🀄" onClick={() => onNav('addTsumo')}>記錄自摸</Button>
-            <Button icon="💰" variant="honey" onClick={() => onNav('addSettlement')}>週結算</Button>
-            <Button icon="🧳" variant="secondary" onClick={() => onNav('withdrawals')}>記錄旅遊支出</Button>
+            <Button icon="🀄" onClick={() => onNav('addTsumo')}>
+              記錄自摸
+            </Button>
+            <Button icon="💰" variant="honey" onClick={() => onNav('addSettlement')}>
+              週結算
+            </Button>
+            <Button icon="🧳" variant="secondary" onClick={() => onNav('withdrawals')}>
+              記錄旅遊支出
+            </Button>
           </div>
         </Card>
       )}
 
-      {/* 排行榜 */}
       <Card>
         <div className="flex items-center gap-3 mb-5">
           <div className="flex-1 h-px bg-divider" />
@@ -117,7 +135,6 @@ export default function Dashboard({ onNav }) {
           </div>
         )}
 
-        {/* 圓餅圖 */}
         {topN.length >= 2 && (
           <div className="mt-6 pt-6 border-t border-divider">
             <div className="text-[18px] font-medium text-ink-2 mb-3">貢獻占比</div>
@@ -126,30 +143,40 @@ export default function Dashboard({ onNav }) {
         )}
       </Card>
 
-      {/* 最近活動 */}
       {(recentTsumos.length > 0 || recentSettles.length > 0) && (
         <Card>
           <div className="font-serif text-[20px] font-bold mb-3">最近活動</div>
           <div className="space-y-3">
-            {recentTsumos.map(t => (
-              <div key={t.id} className="flex items-center justify-between py-2 border-b border-divider last:border-0">
+            {recentTsumos.map((t) => (
+              <div
+                key={t.id}
+                className="flex items-center justify-between py-2 border-b border-divider last:border-0"
+              >
                 <div className="flex items-center gap-3">
                   <span className="text-2xl">🀄</span>
                   <div>
-                    <div className="text-[18px] font-medium">{playerName(players, t.player_id)} 自摸 × {t.count}</div>
+                    <div className="text-[18px] font-medium">
+                      {playerName(players, t.player_id)} 自摸 × {String(t.count)}
+                    </div>
                     <div className="text-[15px] text-ink-3">{fmtRelativeDate(t.created_at || t.date)}</div>
                   </div>
                 </div>
                 <div className="num text-[20px] text-sage-deep">+{fmtMoney(t.amount, symbol)}</div>
               </div>
             ))}
-            {recentSettles.map(s => (
-              <div key={s.id} className="flex items-center justify-between py-2 border-b border-divider last:border-0">
+            {recentSettles.map((s) => (
+              <div
+                key={s.id}
+                className="flex items-center justify-between py-2 border-b border-divider last:border-0"
+              >
                 <div className="flex items-center gap-3">
                   <span className="text-2xl">💰</span>
                   <div>
                     <div className="text-[18px] font-medium">{playerName(players, s.player_id)} 結算</div>
-                    <div className="text-[15px] text-ink-3">{fmtRelativeDate(s.created_at || s.date)}{s.note ? ` · ${s.note}` : ''}</div>
+                    <div className="text-[15px] text-ink-3">
+                      {fmtRelativeDate(s.created_at || s.date)}
+                      {s.note ? ` · ${s.note}` : ''}
+                    </div>
                   </div>
                 </div>
                 <div className="num text-[20px] text-honey">+{fmtMoney(s.cut_amount, symbol)}</div>
@@ -159,7 +186,6 @@ export default function Dashboard({ onNav }) {
         </Card>
       )}
 
-      {/* 訪客登入入口 */}
       {!isAdmin && (
         <div className="text-center py-4">
           <button

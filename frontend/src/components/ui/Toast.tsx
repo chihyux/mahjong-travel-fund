@@ -1,4 +1,10 @@
-export default function Toast({ toast }) {
+import type { ToastMessage } from '../../types';
+
+interface ToastProps {
+  toast: ToastMessage | null;
+}
+
+export default function Toast({ toast }: ToastProps) {
   if (!toast) return null;
   const bg = toast.type === 'error' ? '#7F1D1D' : '#2F4A2F';
   const icon = toast.type === 'error' ? '✕' : '✓';

@@ -1,15 +1,19 @@
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useStore } from '../hooks/useStore';
 import Card from './ui/Card';
 import Button from './ui/Button';
 
-export default function Login({ onDone }) {
+interface LoginProps {
+  onDone: () => void;
+}
+
+export default function Login({ onDone }: LoginProps) {
   const { actions, data } = useStore();
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [errMsg, setErrMsg] = useState('');
 
-  const submit = async (e) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!password.trim()) return;
     setBusy(true);
@@ -41,7 +45,10 @@ export default function Login({ onDone }) {
             <input
               type="password"
               value={password}
-              onChange={(e) => { setPassword(e.target.value); if (errMsg) setErrMsg(''); }}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                if (errMsg) setErrMsg('');
+              }}
               autoFocus
               placeholder="請輸入管理員密碼"
               aria-invalid={!!errMsg}

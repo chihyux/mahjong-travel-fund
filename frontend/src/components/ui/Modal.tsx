@@ -1,9 +1,27 @@
-import { useEffect } from 'react';
+import { useEffect, type ReactNode } from 'react';
 
-export default function Modal({ open, title, children, onClose, size = 'md' }) {
+type ModalSize = 'sm' | 'md' | 'lg';
+
+interface ModalProps {
+  open: boolean;
+  title?: string;
+  children: ReactNode;
+  onClose: () => void;
+  size?: ModalSize;
+}
+
+const WIDTHS: Record<ModalSize, string> = {
+  sm: 'max-w-sm',
+  md: 'max-w-md',
+  lg: 'max-w-2xl'
+};
+
+export default function Modal({ open, title, children, onClose, size = 'md' }: ModalProps) {
   useEffect(() => {
     if (!open) return;
-    const onKey = (e) => e.key === 'Escape' && onClose();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
     window.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
     return () => {
@@ -14,15 +32,15 @@ export default function Modal({ open, title, children, onClose, size = 'md' }) {
 
   if (!open) return null;
 
-  const width = { sm: 'max-w-sm', md: 'max-w-md', lg: 'max-w-2xl' }[size];
-
   return (
     <div className="fixed inset-0 z-40 flex items-end md:items-center justify-center">
       <div
         className="absolute inset-0 bg-ink/40 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className={`relative w-full ${width} card p-6 m-0 md:m-4 rounded-t-card md:rounded-card max-h-[92vh] overflow-y-auto`}>
+      <div
+        className={`relative w-full ${WIDTHS[size]} card p-6 m-0 md:m-4 rounded-t-card md:rounded-card max-h-[92vh] overflow-y-auto`}
+      >
         {title && (
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-serif text-[22px] font-bold">{title}</h2>

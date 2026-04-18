@@ -1,13 +1,19 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useStore } from '../hooks/useStore';
 import Card from './ui/Card';
 import Button from './ui/Button';
+
+interface SettingsForm {
+  group_name: string;
+  goal_name: string;
+  goal: string;
+}
 
 export default function Settings() {
   const { data, actions } = useStore();
   const { settings } = data;
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<SettingsForm>({
     group_name: '',
     goal_name: '',
     goal: ''
@@ -16,9 +22,9 @@ export default function Settings() {
 
   useEffect(() => {
     setForm({
-      group_name: settings.group_name || '',
-      goal_name: settings.goal_name || '',
-      goal: settings.goal || ''
+      group_name: settings.group_name ?? '',
+      goal_name: settings.goal_name ?? '',
+      goal: settings.goal == null ? '' : String(settings.goal)
     });
   }, [settings]);
 
@@ -30,13 +36,14 @@ export default function Settings() {
         goal_name: form.goal_name,
         goal: Number(form.goal) || 0
       });
-    } catch {}
+    } catch {
+      // toast handled
+    }
     setBusy(false);
   };
 
   return (
     <div className="space-y-6">
-      {/* 基本設定 */}
       <Card>
         <h1 className="font-serif text-[24px] font-bold mb-5">基本設定</h1>
         <div className="space-y-5">
@@ -77,7 +84,6 @@ export default function Settings() {
         </div>
       </Card>
 
-      {/* 登出 */}
       <Card>
         <h2 className="font-serif text-[22px] font-bold mb-3">帳戶</h2>
         <p className="text-[16px] text-ink-3 mb-4 leading-relaxed">

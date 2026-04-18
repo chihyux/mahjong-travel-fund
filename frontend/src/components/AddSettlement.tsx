@@ -1,23 +1,30 @@
-import { useState, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useStore } from '../hooks/useStore';
-import { todayISO, fmtMoney, asBool } from '../lib/utils';
+import { asBool, fmtMoney, todayISO } from '../lib/utils';
+import type { Id } from '../types';
 import Card from './ui/Card';
 import Button from './ui/Button';
 import Segmented from './ui/Segmented';
 import PlayerChips from './ui/PlayerChips';
 
-const CUT_RATIO = 0.10;
+const CUT_RATIO = 0.1;
 
-export default function AddSettlement({ onDone }) {
+type InputMode = 'win' | 'cut';
+
+interface AddSettlementProps {
+  onDone: () => void;
+}
+
+export default function AddSettlement({ onDone }: AddSettlementProps) {
   const { data, actions } = useStore();
   const { players, settings } = data;
   const symbol = settings.currency_symbol || '$';
 
-  const activePlayers = players.filter(p => asBool(p.active));
+  const activePlayers = players.filter((p) => asBool(p.active));
 
   const [date, setDate] = useState(todayISO());
-  const [playerId, setPlayerId] = useState(null);
-  const [mode, setMode] = useState('win'); // 'win' (輸入贏金額) | 'cut' (直接輸入 10%)
+  const [playerId, setPlayerId] = useState<Id | null>(null);
+  const [mode, setMode] = useState<InputMode>('win');
   const [winInput, setWinInput] = useState('');
   const [cutInput, setCutInput] = useState('');
   const [note, setNote] = useState('');
@@ -27,16 +34,15 @@ export default function AddSettlement({ onDone }) {
     if (mode === 'win') {
       const w = Number(winInput) || 0;
       return { win: w, cut: Math.round(w * CUT_RATIO) };
-    } else {
-      const c = Number(cutInput) || 0;
-      return { win: Math.round(c / CUT_RATIO), cut: c };
     }
+    const c = Number(cutInput) || 0;
+    return { win: Math.round(c / CUT_RATIO), cut: c };
   }, [mode, winInput, cutInput]);
 
-  const canSubmit = playerId && cut > 0;
+  const canSubmit = !!playerId && cut > 0;
 
   const submit = async () => {
-    if (!canSubmit) return;
+    if (!playerId || !canSubmit) return;
     setBusy(true);
     try {
       await actions.addSettlement({
@@ -61,17 +67,11 @@ export default function AddSettlement({ onDone }) {
         </div>
 
         <div className="space-y-5">
-          {/* 日期 */}
           <div>
             <label className="block text-[18px] font-medium mb-2">結算日期</label>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-            />
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
 
-          {/* 玩家 */}
           <div>
             <label className="block text-[18px] font-medium mb-2">誰的結算？</label>
             {activePlayers.length === 0 ? (
@@ -79,18 +79,13 @@ export default function AddSettlement({ onDone }) {
                 還沒有玩家，請先到「玩家」分頁新增
               </div>
             ) : (
-              <PlayerChips
-                players={activePlayers}
-                value={playerId}
-                onChange={setPlayerId}
-              />
+              <PlayerChips players={activePlayers} value={playerId} onChange={setPlayerId} />
             )}
           </div>
 
-          {/* 模式切換 */}
           <div>
             <label className="block text-[18px] font-medium mb-2">輸入方式</label>
-            <Segmented
+            <Segmented<InputMode>
               value={mode}
               onChange={setMode}
               options={[
@@ -100,7 +95,6 @@ export default function AddSettlement({ onDone }) {
             />
           </div>
 
-          {/* 輸入框（依模式） */}
           {mode === 'win' ? (
             <div>
               <label className="block text-[18px] font-medium mb-2">這期贏了多少？</label>
@@ -112,9 +106,7 @@ export default function AddSettlement({ onDone }) {
                 placeholder="0"
                 min="0"
               />
-              <div className="text-[15px] text-ink-3 mt-2">
-                系統會自動計算 10% 捐款金額
-              </div>
+              <div className="text-[15px] text-ink-3 mt-2">系統會自動計算 10% 捐款金額</div>
             </div>
           ) : (
             <div>
@@ -133,7 +125,6 @@ export default function AddSettlement({ onDone }) {
             </div>
           )}
 
-          {/* 備註 */}
           <div>
             <label className="block text-[18px] font-medium mb-2">備註（選填）</label>
             <input
@@ -144,7 +135,6 @@ export default function AddSettlement({ onDone }) {
             />
           </div>
 
-          {/* 總額卡片 */}
           <div className="p-5 rounded-2xl bg-honey/10 border-2 border-honey/30">
             <div className="text-[16px] text-honey font-medium mb-1">入公基金</div>
             <div className="num text-[36px] text-honey">{fmtMoney(cut, symbol)}</div>
@@ -155,7 +145,6 @@ export default function AddSettlement({ onDone }) {
             )}
           </div>
 
-          {/* 按鈕 */}
           <div className="grid grid-cols-2 gap-3 pt-2">
             <Button variant="secondary" size="md" onClick={onDone} disabled={busy}>
               取消

@@ -1,10 +1,16 @@
 import { useState } from 'react';
 import { useStore } from '../hooks/useStore';
-import { fmtMoney, calcContributions, asBool } from '../lib/utils';
+import { asBool, calcContributions, fmtMoney } from '../lib/utils';
+import type { Id, Player } from '../types';
 import Card from './ui/Card';
 import Button from './ui/Button';
 import Modal from './ui/Modal';
 import ConfirmDialog from './ui/ConfirmDialog';
+
+interface EditingPlayer {
+  id: Id;
+  name: string;
+}
 
 export default function Players() {
   const { data, actions } = useStore();
@@ -14,18 +20,17 @@ export default function Players() {
   const [addOpen, setAddOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [busy, setBusy] = useState(false);
-  const [editing, setEditing] = useState(null); // { id, name }
-  const [confirmDel, setConfirmDel] = useState(null); // player
+  const [editing, setEditing] = useState<EditingPlayer | null>(null);
+  const [confirmDel, setConfirmDel] = useState<Player | null>(null);
 
   const contrib = calcContributions(players, tsumos, settlements);
 
-  // 排序：啟用優先，然後按累計貢獻
   const sorted = [...players].sort((a, b) => {
     const aActive = asBool(a.active);
     const bActive = asBool(b.active);
     if (aActive !== bActive) return aActive ? -1 : 1;
-    const ac = (contrib[a.id] || {}).total || 0;
-    const bc = (contrib[b.id] || {}).total || 0;
+    const ac = contrib[a.id]?.total ?? 0;
+    const bc = contrib[b.id]?.total ?? 0;
     return bc - ac;
   });
 
@@ -37,13 +42,19 @@ export default function Players() {
       await actions.addPlayer(name);
       setNewName('');
       setAddOpen(false);
-    } catch {}
+    } catch {
+      // toast handled
+    }
     setBusy(false);
   };
 
-  const toggleActive = async (player) => {
+  const toggleActive = async (player: Player) => {
     const nextActive = !asBool(player.active);
-    await actions.updatePlayer({ id: player.id, active: nextActive });
+    try {
+      await actions.updatePlayer({ id: player.id, active: nextActive });
+    } catch {
+      // toast handled
+    }
   };
 
   const saveEdit = async () => {
@@ -54,7 +65,9 @@ export default function Players() {
     try {
       await actions.updatePlayer({ id: editing.id, name });
       setEditing(null);
-    } catch {}
+    } catch {
+      // toast handled
+    }
     setBusy(false);
   };
 
@@ -62,7 +75,9 @@ export default function Players() {
     if (!confirmDel) return;
     try {
       await actions.deletePlayer(confirmDel.id);
-    } catch {}
+    } catch {
+      // toast handled
+    }
     setConfirmDel(null);
   };
 
@@ -87,16 +102,21 @@ export default function Players() {
           </div>
         ) : (
           <div className="divide-y divide-divider">
-            {sorted.map(p => {
-              const c = contrib[p.id] || { total: 0, tsumoCount: 0 };
+            {sorted.map((p) => {
+              const c = contrib[p.id] ?? { tsumo: 0, settle: 0, total: 0, tsumoCount: 0 };
               const active = asBool(p.active);
               return (
-                <div key={p.id} className={`py-4 flex items-center gap-3 ${!active ? 'opacity-50' : ''}`}>
+                <div
+                  key={p.id}
+                  className={`py-4 flex items-center gap-3 ${!active ? 'opacity-50' : ''}`}
+                >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-[20px] font-medium truncate">{p.name}</span>
                       {!active && (
-                        <span className="text-[13px] px-2 py-0.5 rounded-full bg-hint text-ink-3">停用</span>
+                        <span className="text-[13px] px-2 py-0.5 rounded-full bg-hint text-ink-3">
+                          停用
+                        </span>
                       )}
                     </div>
                     <div className="text-[15px] text-ink-3 mt-1">
@@ -113,7 +133,7 @@ export default function Players() {
                     ✎
                   </button>
                   <button
-                    onClick={() => toggleActive(p)}
+                    onClick={() => void toggleActive(p)}
                     className="px-3 min-h-[40px] rounded-xl border-2 border-divider text-[14px] font-medium hover:bg-hint"
                   >
                     {active ? '停用' : '啟用'}
@@ -138,7 +158,6 @@ export default function Players() {
         </div>
       </Card>
 
-      {/* 新增玩家 Modal */}
       <Modal open={addOpen} title="新增玩家" onClose={() => setAddOpen(false)} size="sm">
         <div className="space-y-4">
           <div>
@@ -148,14 +167,21 @@ export default function Players() {
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.nativeEvent.isComposing) addNew();
+                if (e.key === 'Enter' && !e.nativeEvent.isComposing) void addNew();
               }}
               autoFocus
               placeholder="請輸入玩家名字"
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Button variant="secondary" size="md" onClick={() => setAddOpen(false)} disabled={busy}>取消</Button>
+            <Button
+              variant="secondary"
+              size="md"
+              onClick={() => setAddOpen(false)}
+              disabled={busy}
+            >
+              取消
+            </Button>
             <Button size="md" onClick={addNew} disabled={busy || !newName.trim()}>
               {busy ? '儲存中…' : '新增'}
             </Button>
@@ -163,7 +189,6 @@ export default function Players() {
         </div>
       </Modal>
 
-      {/* 編輯 Modal */}
       <Modal open={!!editing} title="編輯玩家" onClose={() => setEditing(null)} size="sm">
         {editing && (
           <div className="space-y-4">
@@ -174,13 +199,20 @@ export default function Players() {
                 value={editing.name}
                 onChange={(e) => setEditing({ ...editing, name: e.target.value })}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.nativeEvent.isComposing) saveEdit();
+                  if (e.key === 'Enter' && !e.nativeEvent.isComposing) void saveEdit();
                 }}
                 autoFocus
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <Button variant="secondary" size="md" onClick={() => setEditing(null)} disabled={busy}>取消</Button>
+              <Button
+                variant="secondary"
+                size="md"
+                onClick={() => setEditing(null)}
+                disabled={busy}
+              >
+                取消
+              </Button>
               <Button size="md" onClick={saveEdit} disabled={busy || !editing.name.trim()}>
                 {busy ? '儲存中…' : '儲存'}
               </Button>
@@ -192,7 +224,7 @@ export default function Players() {
       <ConfirmDialog
         open={!!confirmDel}
         title="確認刪除"
-        message={`確定要刪除玩家「${confirmDel?.name}」嗎？此動作無法復原。`}
+        message={`確定要刪除玩家「${confirmDel?.name ?? ''}」嗎？此動作無法復原。`}
         confirmText="刪除"
         onConfirm={doDelete}
         onCancel={() => setConfirmDel(null)}

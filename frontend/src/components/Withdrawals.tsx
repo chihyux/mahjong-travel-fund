@@ -1,10 +1,17 @@
 import { useState } from 'react';
 import { useStore } from '../hooks/useStore';
-import { fmtMoney, fmtDate, todayISO, calcBalance } from '../lib/utils';
+import { calcBalance, fmtDate, fmtMoney, todayISO } from '../lib/utils';
+import type { Withdrawal } from '../types';
 import Card from './ui/Card';
 import Button from './ui/Button';
 import Modal from './ui/Modal';
 import ConfirmDialog from './ui/ConfirmDialog';
+
+interface WithdrawalForm {
+  date: string;
+  amount: string;
+  note: string;
+}
 
 export default function Withdrawals() {
   const { data, actions } = useStore();
@@ -14,12 +21,18 @@ export default function Withdrawals() {
   const { balance, out } = calcBalance(tsumos, settlements, withdrawals);
 
   const [addOpen, setAddOpen] = useState(false);
-  const [form, setForm] = useState({ date: todayISO(), amount: '', note: '' });
+  const [form, setForm] = useState<WithdrawalForm>({
+    date: todayISO(),
+    amount: '',
+    note: ''
+  });
   const [busy, setBusy] = useState(false);
-  const [confirmDel, setConfirmDel] = useState(null);
+  const [confirmDel, setConfirmDel] = useState<Withdrawal | null>(null);
 
-  const list = [...(withdrawals || [])].sort((a, b) =>
-    new Date(b.created_at || b.date).getTime() - new Date(a.created_at || a.date).getTime()
+  const list = [...(withdrawals ?? [])].sort(
+    (a, b) =>
+      new Date(b.created_at || b.date).getTime() -
+      new Date(a.created_at || a.date).getTime()
   );
 
   const openAdd = () => {
@@ -38,7 +51,9 @@ export default function Withdrawals() {
         note: form.note
       });
       setAddOpen(false);
-    } catch {}
+    } catch {
+      // toast handled
+    }
     setBusy(false);
   };
 
@@ -46,7 +61,9 @@ export default function Withdrawals() {
     if (!confirmDel) return;
     try {
       await actions.deleteWithdrawal(confirmDel.id);
-    } catch {}
+    } catch {
+      // toast handled
+    }
     setConfirmDel(null);
   };
 
@@ -69,7 +86,9 @@ export default function Withdrawals() {
           </div>
         </div>
 
-        <Button icon="🧳" onClick={openAdd}>記錄旅遊支出</Button>
+        <Button icon="🧳" onClick={openAdd}>
+          記錄旅遊支出
+        </Button>
       </Card>
 
       <Card>
@@ -80,7 +99,7 @@ export default function Withdrawals() {
           </div>
         ) : (
           <div className="divide-y divide-divider">
-            {list.map(w => (
+            {list.map((w) => (
               <div key={w.id} className="py-4 flex items-center gap-3">
                 <div className="text-2xl">🧳</div>
                 <div className="flex-1 min-w-0">
@@ -89,9 +108,7 @@ export default function Withdrawals() {
                   </div>
                   <div className="text-[15px] text-ink-3">{fmtDate(w.date)}</div>
                 </div>
-                <div className="num text-[20px] text-ink-2">
-                  −{fmtMoney(w.amount, symbol)}
-                </div>
+                <div className="num text-[20px] text-ink-2">−{fmtMoney(w.amount, symbol)}</div>
                 <button
                   onClick={() => setConfirmDel(w)}
                   className="w-11 h-11 rounded-full hover:bg-red-50 flex items-center justify-center text-ink-3 text-xl"
@@ -105,7 +122,6 @@ export default function Withdrawals() {
         )}
       </Card>
 
-      {/* 新增 Modal */}
       <Modal open={addOpen} title="記錄旅遊支出" onClose={() => setAddOpen(false)} size="sm">
         <div className="space-y-4">
           <div>
@@ -138,7 +154,9 @@ export default function Withdrawals() {
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Button variant="secondary" size="md" onClick={() => setAddOpen(false)} disabled={busy}>取消</Button>
+            <Button variant="secondary" size="md" onClick={() => setAddOpen(false)} disabled={busy}>
+              取消
+            </Button>
             <Button size="md" onClick={submit} disabled={busy || !Number(form.amount)}>
               {busy ? '儲存中…' : '儲存'}
             </Button>

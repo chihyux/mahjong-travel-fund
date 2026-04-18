@@ -1,4 +1,11 @@
-export default function Stepper({ value, onChange, min = 0, max = 99 }) {
+interface StepperProps {
+  value: number;
+  onChange: (v: number) => void;
+  min?: number;
+  max?: number;
+}
+
+export default function Stepper({ value, onChange, min = 0, max = 99 }: StepperProps) {
   const dec = () => onChange(Math.max(min, value - 1));
   const inc = () => onChange(Math.min(max, value + 1));
   return (

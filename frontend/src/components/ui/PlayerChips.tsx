@@ -1,6 +1,27 @@
-export default function PlayerChips({ players, value, onChange, multi = false, recentIds = [] }) {
+import type { Id, Player } from '../../types';
+
+type SingleProps = {
+  players: Player[];
+  recentIds?: Id[];
+  multi?: false;
+  value: Id | null;
+  onChange: (id: Id) => void;
+};
+
+type MultiProps = {
+  players: Player[];
+  recentIds?: Id[];
+  multi: true;
+  value: Id[];
+  onChange: (ids: Id[]) => void;
+};
+
+type PlayerChipsProps = SingleProps | MultiProps;
+
+export default function PlayerChips(props: PlayerChipsProps) {
+  const { players, recentIds = [] } = props;
   const list = [...players];
-  // 最近自摸的置頂
+
   if (recentIds.length) {
     list.sort((a, b) => {
       const ai = recentIds.indexOf(a.id);
@@ -12,18 +33,18 @@ export default function PlayerChips({ players, value, onChange, multi = false, r
     });
   }
 
-  const isSelected = (id) => {
-    if (multi) return Array.isArray(value) && value.includes(id);
-    return value === id;
+  const isSelected = (id: Id): boolean => {
+    if (props.multi) return props.value.includes(id);
+    return props.value === id;
   };
 
-  const toggle = (id) => {
-    if (multi) {
-      const arr = Array.isArray(value) ? value : [];
-      if (arr.includes(id)) onChange(arr.filter((x) => x !== id));
-      else onChange([...arr, id]);
+  const toggle = (id: Id) => {
+    if (props.multi) {
+      const arr = props.value;
+      if (arr.includes(id)) props.onChange(arr.filter((x) => x !== id));
+      else props.onChange([...arr, id]);
     } else {
-      onChange(id);
+      props.onChange(id);
     }
   };
 
