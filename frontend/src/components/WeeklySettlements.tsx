@@ -14,13 +14,41 @@ import Card from "./ui/Card";
 import Button from "./ui/Button";
 import ConfirmDialog from "./ui/ConfirmDialog";
 
+interface PlayerWeekDetail {
+  cut: number;
+  tsumo: number;
+}
+
 export default function WeeklySettlements() {
   const { data, isAdmin, actions } = useStore();
-  const { players, rounds, settings } = data;
+  const { players, rounds, tsumos, settings } = data;
   const symbol = settings.currency_symbol || "$";
 
   const weeks = useMemo(() => groupRoundsByWeek(rounds), [rounds]);
   const thisMonday = weekStartISO(new Date());
+
+  // 每週 × 每玩家的 cut（抽成）與 tsumo（當週自摸金額）聚合
+  // 用於計算「實拿 = amount − cut − tsumo」
+  const perWeekPlayerDetail = useMemo(() => {
+    const result: Record<string, Record<Id, PlayerWeekDetail>> = {};
+    const ensure = (wk: string, pid: Id): PlayerWeekDetail => {
+      const byPid = result[wk] ?? (result[wk] = {});
+      return byPid[pid] ?? (byPid[pid] = { cut: 0, tsumo: 0 });
+    };
+    for (const w of weeks) {
+      for (const g of w.rounds) {
+        for (const row of g.rows) {
+          ensure(w.weekStart, row.player_id).cut += Number(row.cut_amount) || 0;
+        }
+      }
+    }
+    for (const t of tsumos ?? []) {
+      const wk = weekStartISO(t.date);
+      if (!wk || !result[wk]) continue; // 只納入已有 rounds 的週
+      ensure(wk, t.player_id).tsumo += Number(t.amount) || 0;
+    }
+    return result;
+  }, [weeks, tsumos]);
 
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [confirm, setConfirm] = useState<{
@@ -68,9 +96,21 @@ export default function WeeklySettlements() {
       {weeks.map((w) => {
         const isCurrentWeek = w.weekStart === thisMonday;
         const isOpen = !!expanded[w.weekStart];
+        const detail = perWeekPlayerDetail[w.weekStart] ?? {};
         const perPlayerList = Object.entries(w.perPlayer)
-          .map(([pid, amt]) => ({ pid: pid as Id, amt }))
+          .map(([pid, amt]) => {
+            const d = detail[pid as Id] ?? { cut: 0, tsumo: 0 };
+            return {
+              pid: pid as Id,
+              amt,
+              cut: d.cut,
+              tsumo: d.tsumo,
+              net: amt - d.cut - d.tsumo,
+            };
+          })
           .sort((a, b) => b.amt - a.amt);
+        const top = perPlayerList[0];
+        const topWinnerPid = top && top.amt > 0 ? top.pid : null;
 
         return (
           <Card key={w.weekStart} padding="p-0">
@@ -105,26 +145,58 @@ export default function WeeklySettlements() {
                 </div>
               </div>
 
-              <div className="space-y-1 mb-3">
-                {perPlayerList.map(({ pid, amt }) => (
-                  <div
-                    key={pid}
-                    className="flex items-center justify-between text-[16px]"
-                  >
-                    <span className="truncate">{playerName(players, pid)}</span>
-                    <span
-                      className={`num ${
-                        amt > 0
-                          ? "text-sage-deep"
-                          : amt < 0
-                            ? "text-red-700"
-                            : "text-ink-3"
-                      }`}
-                    >
-                      {fmtSignedMoney(amt, symbol)}
-                    </span>
-                  </div>
-                ))}
+              <div className="space-y-2 mb-3">
+                {perPlayerList.map(({ pid, amt, cut, tsumo, net }) => {
+                  const showBreakdown = amt > 0;
+                  return (
+                    <div key={pid}>
+                      <div className="flex items-center justify-between text-[16px]">
+                        <span className="truncate flex items-center gap-1">
+                          {pid === topWinnerPid && (
+                            <span aria-label="本週贏家">👑</span>
+                          )}
+                          {playerName(players, pid)}
+                        </span>
+                        <span
+                          className={`num ${
+                            amt > 0
+                              ? "text-sage-deep"
+                              : amt < 0
+                                ? "text-red-700"
+                                : "text-ink-3"
+                          }`}
+                        >
+                          {fmtSignedMoney(amt, symbol)}
+                        </span>
+                      </div>
+                      {showBreakdown && (
+                        <div className="text-[13px] text-ink-3 pl-5 mt-0.5">
+                          實拿{" "}
+                          <span className="num text-sage-deep font-medium">
+                            {fmtSignedMoney(net, symbol)}
+                          </span>{" "}
+                          = <span className="num">{fmtMoney(amt, symbol)}</span>
+                          {cut > 0 && (
+                            <>
+                              {" "}
+                              − 抽成{" "}
+                              <span className="num">{fmtMoney(cut, symbol)}</span>
+                            </>
+                          )}
+                          {tsumo > 0 && (
+                            <>
+                              {" "}
+                              − 自摸{" "}
+                              <span className="num">
+                                {fmtMoney(tsumo, symbol)}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
 
               <div className="flex items-center gap-2 flex-wrap">
@@ -161,28 +233,37 @@ export default function WeeklySettlements() {
                       {fmtDate(g.date)}
                       {g.note ? ` · ${g.note}` : ""}
                     </div>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                       {g.rows.map((row) => {
                         const amt = Number(row.amount) || 0;
+                        const cut = Number(row.cut_amount) || 0;
+                        const net = amt - cut;
                         return (
-                          <div
-                            key={row.id}
-                            className="flex items-center justify-between text-[15px]"
-                          >
-                            <span className="truncate">
-                              {playerName(players, row.player_id)}
-                            </span>
-                            <span
-                              className={`num ${
-                                amt > 0
-                                  ? "text-sage-deep"
-                                  : amt < 0
-                                    ? "text-red-700"
-                                    : "text-ink-3"
-                              }`}
-                            >
-                              {fmtSignedMoney(amt, symbol)}
-                            </span>
+                          <div key={row.id} className="text-[15px]">
+                            <div className="flex items-center justify-between">
+                              <span className="truncate">
+                                {playerName(players, row.player_id)}
+                              </span>
+                              <span
+                                className={`num ${
+                                  amt > 0
+                                    ? "text-sage-deep"
+                                    : amt < 0
+                                      ? "text-red-700"
+                                      : "text-ink-3"
+                                }`}
+                              >
+                                {fmtSignedMoney(amt, symbol)}
+                              </span>
+                            </div>
+                            {amt > 0 && cut > 0 && (
+                              <div className="text-[12px] text-ink-3 text-right mt-0.5">
+                                實拿{" "}
+                                <span className="num">
+                                  {fmtSignedMoney(net, symbol)}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
