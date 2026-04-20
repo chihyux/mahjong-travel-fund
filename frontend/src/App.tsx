@@ -8,7 +8,8 @@ import Dashboard from './components/Dashboard';
 import History from './components/History';
 import Login from './components/Login';
 import AddTsumo from './components/AddTsumo';
-import AddSettlement from './components/AddSettlement';
+import AddRound from './components/AddRound';
+import WeeklySettlements from './components/WeeklySettlements';
 import Players from './components/Players';
 import Withdrawals from './components/Withdrawals';
 import Settings from './components/Settings';
@@ -28,7 +29,8 @@ interface MoreMenuProps {
 
 function MoreMenu({ onNav, onLogout }: MoreMenuProps) {
   const items: ReadonlyArray<MoreMenuItem> = [
-    { key: 'addSettlement', icon: '💰', label: '週結算' },
+    { key: 'addRound', icon: '💰', label: '每局結算' },
+    { key: 'weeklySettlements', icon: '📅', label: '週結算' },
     { key: 'withdrawals', icon: '🧳', label: '旅遊支出' },
     { key: 'players', icon: '👥', label: '玩家管理' },
     { key: 'settings', icon: '⚙️', label: '設定' }
@@ -89,7 +91,7 @@ function ConfigWarning() {
 
 const ADMIN_ONLY_VIEWS: ReadonlyArray<ViewKey> = [
   'addTsumo',
-  'addSettlement',
+  'addRound',
   'players',
   'withdrawals',
   'settings',
@@ -143,8 +145,10 @@ function AppInner() {
         return <History />;
       case 'addTsumo':
         return <AddTsumo onDone={() => setView('dashboard')} />;
-      case 'addSettlement':
-        return <AddSettlement onDone={() => setView('dashboard')} />;
+      case 'addRound':
+        return <AddRound onDone={() => setView('dashboard')} />;
+      case 'weeklySettlements':
+        return <WeeklySettlements />;
       case 'players':
         return <Players />;
       case 'withdrawals':

@@ -15,10 +15,10 @@ interface WithdrawalForm {
 
 export default function Withdrawals() {
   const { data, actions } = useStore();
-  const { tsumos, settlements, withdrawals, settings } = data;
+  const { tsumos, rounds, withdrawals, settings } = data;
   const symbol = settings.currency_symbol || '$';
 
-  const { balance, out } = calcBalance(tsumos, settlements, withdrawals);
+  const { balance, out } = calcBalance(tsumos, rounds, withdrawals);
 
   const [addOpen, setAddOpen] = useState(false);
   const [form, setForm] = useState<WithdrawalForm>({

@@ -11,7 +11,9 @@ interface NavEntry {
 
 const PUBLIC_NAV: ReadonlyArray<NavEntry> = [
   { key: 'dashboard', icon: '🌿', label: '首頁' },
-  { key: 'history', icon: '📖', label: '紀錄' }
+  { key: 'history', icon: '📖', label: '紀錄' },
+  { key: 'weeklySettlements', icon: '📅', label: '週結算' },
+  { key: 'login', icon: '🔑', label: '管理員登入' }
 ];
 
 const ADMIN_NAV: ReadonlyArray<NavEntry> = [
@@ -46,11 +48,12 @@ export default function Shell({ current, onNav, children }: ShellProps) {
           <nav className="px-3 space-y-1">
             <NavItem icon="🌿" label="首頁" active={current === 'dashboard'} onClick={() => onNav('dashboard')} />
             <NavItem icon="📖" label="紀錄" active={current === 'history'} onClick={() => onNav('history')} />
+            <NavItem icon="📅" label="週結算" active={current === 'weeklySettlements'} onClick={() => onNav('weeklySettlements')} />
             {isAdmin ? (
               <>
                 <div className="h-px bg-divider my-3 mx-3" />
                 <NavItem icon="🀄" label="記錄自摸" active={current === 'addTsumo'} onClick={() => onNav('addTsumo')} />
-                <NavItem icon="💰" label="週結算" active={current === 'addSettlement'} onClick={() => onNav('addSettlement')} />
+                <NavItem icon="💰" label="每局結算" active={current === 'addRound'} onClick={() => onNav('addRound')} />
                 <NavItem icon="🧳" label="旅遊支出" active={current === 'withdrawals'} onClick={() => onNav('withdrawals')} />
                 <NavItem icon="👥" label="玩家" active={current === 'players'} onClick={() => onNav('players')} />
                 <NavItem icon="⚙️" label="設定" active={current === 'settings'} onClick={() => onNav('settings')} />

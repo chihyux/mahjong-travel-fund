@@ -12,9 +12,8 @@ import {
   type AppData,
   type Id,
   type PlayerUpdatePayload,
+  type RoundPayload,
   type SettingsMap,
-  type SettlementPayload,
-  type SettlementUpdatePayload,
   type ToastMessage,
   type ToastType,
   type TsumoPayload,
@@ -36,9 +35,9 @@ interface StoreActions {
   updateTsumo: (payload: TsumoUpdatePayload) => Promise<unknown>;
   deleteTsumo: (id: Id) => Promise<unknown>;
 
-  addSettlement: (payload: SettlementPayload) => Promise<unknown>;
-  updateSettlement: (payload: SettlementUpdatePayload) => Promise<unknown>;
-  deleteSettlement: (id: Id) => Promise<unknown>;
+  addRound: (payload: RoundPayload) => Promise<unknown>;
+  deleteRound: (round_id: Id) => Promise<unknown>;
+  markWeekSettled: (weekStart: string, settled: boolean) => Promise<unknown>;
 
   addWithdrawal: (payload: WithdrawalPayload) => Promise<unknown>;
   deleteWithdrawal: (id: Id) => Promise<unknown>;
@@ -64,7 +63,7 @@ const StoreContext = createContext<StoreContextValue | null>(null);
 const emptyData = (): AppData => ({
   players: [],
   tsumos: [],
-  settlements: [],
+  rounds: [],
   withdrawals: [],
   settings: {}
 });
@@ -179,15 +178,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     ),
     deleteTsumo: wrap((pw, id: Id) => api.deleteTsumo(pw, id), '已刪除'),
 
-    addSettlement: wrap(
-      (pw, payload: SettlementPayload) => api.addSettlement(pw, payload),
-      '已記錄結算'
+    addRound: wrap(
+      (pw, payload: RoundPayload) => api.addRound(pw, payload),
+      '已記錄本局'
     ),
-    updateSettlement: wrap(
-      (pw, payload: SettlementUpdatePayload) => api.updateSettlement(pw, payload),
-      '已更新'
+    deleteRound: wrap((pw, round_id: Id) => api.deleteRound(pw, round_id), '已刪除'),
+    markWeekSettled: wrap(
+      (pw, weekStart: string, settled: boolean) =>
+        api.markWeekSettled(pw, weekStart, settled),
+      '已更新結算狀態'
     ),
-    deleteSettlement: wrap((pw, id: Id) => api.deleteSettlement(pw, id), '已刪除'),
 
     addWithdrawal: wrap(
       (pw, payload: WithdrawalPayload) => api.addWithdrawal(pw, payload),

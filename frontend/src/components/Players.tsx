@@ -14,7 +14,7 @@ interface EditingPlayer {
 
 export default function Players() {
   const { data, actions } = useStore();
-  const { players, tsumos, settlements, settings } = data;
+  const { players, tsumos, rounds, settings } = data;
   const symbol = settings.currency_symbol || '$';
 
   const [addOpen, setAddOpen] = useState(false);
@@ -23,7 +23,7 @@ export default function Players() {
   const [editing, setEditing] = useState<EditingPlayer | null>(null);
   const [confirmDel, setConfirmDel] = useState<Player | null>(null);
 
-  const contrib = calcContributions(players, tsumos, settlements);
+  const contrib = calcContributions(players, tsumos, rounds);
 
   const sorted = [...players].sort((a, b) => {
     const aActive = asBool(a.active);

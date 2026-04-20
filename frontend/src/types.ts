@@ -23,12 +23,16 @@ export interface Tsumo {
   created_at: IsoDate;
 }
 
-export interface Settlement {
+// 每局 4 位玩家各一列，以 round_id 關聯；amount 可正可負，同 round_id 總和 = 0
+export interface Round {
   id: Id;
+  round_id: Id;
   date: IsoDate;
   player_id: Id;
-  win_amount?: NumLike;
+  amount: NumLike;
   cut_amount: NumLike;
+  settled: BoolLike;
+  settled_at?: IsoDate;
   note?: string;
   created_at: IsoDate;
 }
@@ -55,7 +59,7 @@ export interface SettingsMap {
 export interface AppData {
   players: Player[];
   tsumos: Tsumo[];
-  settlements: Settlement[];
+  rounds: Round[];
   withdrawals: Withdrawal[];
   settings: SettingsMap;
 }
@@ -73,16 +77,15 @@ export interface TsumoUpdatePayload extends Partial<TsumoPayload> {
   id: Id;
 }
 
-export interface SettlementPayload {
-  date: IsoDate;
+export interface RoundEntry {
   player_id: Id;
-  win_amount?: number;
-  cut_amount: number;
-  note?: string;
+  amount: number;
 }
 
-export interface SettlementUpdatePayload extends Partial<SettlementPayload> {
-  id: Id;
+export interface RoundPayload {
+  date: IsoDate;
+  entries: RoundEntry[]; // 必須恰好 4 筆，玩家不重複，amount 總和 = 0
+  note?: string;
 }
 
 export interface WithdrawalPayload {
@@ -136,7 +139,8 @@ export type ViewKey =
   | 'history'
   | 'login'
   | 'addTsumo'
-  | 'addSettlement'
+  | 'addRound'
+  | 'weeklySettlements'
   | 'players'
   | 'withdrawals'
   | 'settings'

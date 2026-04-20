@@ -4,9 +4,8 @@ import type {
   AppData,
   Id,
   PlayerUpdatePayload,
+  RoundPayload,
   SettingsMap,
-  SettlementPayload,
-  SettlementUpdatePayload,
   TsumoPayload,
   TsumoUpdatePayload,
   WithdrawalPayload
@@ -60,12 +59,12 @@ export const api = {
   deleteTsumo: (password: string, id: Id) =>
     post<unknown>({ action: 'deleteTsumo', password, id }),
 
-  addSettlement: (password: string, payload: SettlementPayload) =>
-    post<unknown>({ action: 'addSettlement', password, ...payload }),
-  updateSettlement: (password: string, payload: SettlementUpdatePayload) =>
-    post<unknown>({ action: 'updateSettlement', password, ...payload }),
-  deleteSettlement: (password: string, id: Id) =>
-    post<unknown>({ action: 'deleteSettlement', password, id }),
+  addRound: (password: string, payload: RoundPayload) =>
+    post<unknown>({ action: 'addRound', password, ...payload }),
+  deleteRound: (password: string, round_id: Id) =>
+    post<unknown>({ action: 'deleteRound', password, round_id }),
+  markWeekSettled: (password: string, week_start: string, settled: boolean) =>
+    post<unknown>({ action: 'markWeekSettled', password, week_start, settled }),
 
   addWithdrawal: (password: string, payload: WithdrawalPayload) =>
     post<unknown>({ action: 'addWithdrawal', password, ...payload }),
