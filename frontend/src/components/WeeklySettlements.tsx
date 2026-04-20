@@ -111,6 +111,15 @@ export default function WeeklySettlements() {
           .sort((a, b) => b.amt - a.amt);
         const top = perPlayerList[0];
         const topWinnerPid = top && top.amt > 0 ? top.pid : null;
+        const weekTsumoTotal = Object.values(detail).reduce(
+          (s, d) => s + d.tsumo,
+          0,
+        );
+        const weekFundTotal = w.cutTotal + weekTsumoTotal;
+        const weekTsumos = (tsumos ?? [])
+          .filter((t) => weekStartISO(t.date) === w.weekStart)
+          .slice()
+          .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
         return (
           <Card key={w.weekStart} padding="p-0">
@@ -138,10 +147,27 @@ export default function WeeklySettlements() {
                   </div>
                   <div className="text-[15px] text-ink-3 mt-1">
                     {w.rounds.length} 局 · 入公基金{" "}
-                    <span className="num text-honey">
-                      {fmtMoney(w.cutTotal, symbol)}
+                    <span className="num text-honey font-medium">
+                      {fmtMoney(weekFundTotal, symbol)}
                     </span>
                   </div>
+                  {weekFundTotal > 0 && (
+                    <div className="text-[13px] text-ink-3">
+                      抽成{" "}
+                      <span className="num">
+                        {fmtMoney(w.cutTotal, symbol)}
+                      </span>
+                      {weekTsumoTotal > 0 && (
+                        <>
+                          {" "}
+                          + 自摸{" "}
+                          <span className="num">
+                            {fmtMoney(weekTsumoTotal, symbol)}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -270,11 +296,38 @@ export default function WeeklySettlements() {
                     </div>
                     {g.cutTotal > 0 && (
                       <div className="text-[13px] text-honey mt-2">
-                        入公基金 {fmtMoney(g.cutTotal, symbol)}
+                        抽成入公基金 {fmtMoney(g.cutTotal, symbol)}
                       </div>
                     )}
                   </div>
                 ))}
+                {weekTsumos.length > 0 && (
+                  <div className="p-4 bg-honey/5">
+                    <div className="text-[13px] text-ink-3 mb-2">
+                      本週自摸 · 共{" "}
+                      <span className="num text-honey font-medium">
+                        {fmtMoney(weekTsumoTotal, symbol)}
+                      </span>
+                    </div>
+                    <div className="space-y-1">
+                      {weekTsumos.map((t) => (
+                        <div
+                          key={t.id}
+                          className="flex items-center justify-between text-[15px]"
+                        >
+                          <span className="truncate">
+                            {fmtDate(t.date)} ·{" "}
+                            {playerName(players, t.player_id)} ×{" "}
+                            {String(t.count)}
+                          </span>
+                          <span className="num text-honey">
+                            +{fmtMoney(t.amount, symbol)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </Card>
