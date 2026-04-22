@@ -18,12 +18,23 @@ interface AddRoundProps {
   onDone: () => void;
 }
 
+type Sign = '+' | '-';
+
 interface SlotState {
   player_id: Id | null;
-  amountInput: string; // 允許空字串/「-」等暫態
+  sign: Sign;
+  amountInput: string; // 僅允許 >= 0 的數字字串
 }
 
-const emptySlot = (): SlotState => ({ player_id: null, amountInput: '' });
+const emptySlot = (): SlotState => ({ player_id: null, sign: '+', amountInput: '' });
+
+const signedAmount = (s: SlotState): number => {
+  const n = Number(s.amountInput);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return s.sign === '-' ? -n : n;
+};
+
+const sanitizePositive = (raw: string): string => raw.replace(/\D+/g, '');
 
 export default function AddRound({ onDone }: AddRoundProps) {
   const { data, actions } = useStore();
@@ -48,7 +59,7 @@ export default function AddRound({ onDone }: AddRoundProps) {
     () =>
       slots.map((s) => ({
         player_id: s.player_id ?? '',
-        amount: Number(s.amountInput) || 0
+        amount: signedAmount(s)
       })),
     [slots]
   );
@@ -92,7 +103,7 @@ export default function AddRound({ onDone }: AddRoundProps) {
         date,
         entries: slots.map((s) => ({
           player_id: s.player_id as Id,
-          amount: Number(s.amountInput) || 0
+          amount: signedAmount(s)
         })),
         note
       });
@@ -123,33 +134,54 @@ export default function AddRound({ onDone }: AddRoundProps) {
           ) : (
             <div className="space-y-3">
               <label className="block text-[18px] font-medium">四位玩家輸贏</label>
-              {slots.map((slot, idx) => (
-                <div key={idx} className="flex items-stretch gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setPickerFor(idx)}
-                    className="press flex-1 min-h-[56px] px-4 rounded-xl border-2 border-divider bg-white text-left text-[17px] flex items-center justify-between"
-                  >
-                    <span className={slot.player_id ? 'font-medium' : 'text-ink-3'}>
-                      {slot.player_id
-                        ? playerName(players, slot.player_id)
-                        : `選擇玩家 ${idx + 1}`}
-                    </span>
-                    <span className="text-ink-3 text-xl">›</span>
-                  </button>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    placeholder="金額"
-                    value={slot.amountInput}
-                    onChange={(e) => setSlot(idx, { amountInput: e.target.value })}
-                    className="!w-28 text-right num"
-                    aria-label={`玩家 ${idx + 1} 金額`}
-                  />
-                </div>
-              ))}
+              {slots.map((slot, idx) => {
+                const isPlus = slot.sign === '+';
+                return (
+                  <div key={idx} className="flex items-stretch gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPickerFor(idx)}
+                      className="press flex-1 min-h-[56px] px-4 rounded-xl border-2 border-divider bg-white text-left text-[17px] flex items-center justify-between"
+                    >
+                      <span className={slot.player_id ? 'font-medium' : 'text-ink-3'}>
+                        {slot.player_id
+                          ? playerName(players, slot.player_id)
+                          : `選擇玩家 ${idx + 1}`}
+                      </span>
+                      <span className="text-ink-3 text-xl">›</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSlot(idx, { sign: isPlus ? '-' : '+' })
+                      }
+                      aria-label={`切換玩家 ${idx + 1} 輸贏`}
+                      aria-pressed={!isPlus}
+                      className={`press min-h-[56px] w-12 rounded-xl border-2 text-[22px] font-bold num transition-colors ${
+                        isPlus
+                          ? 'bg-sage/15 border-sage text-sage-deep'
+                          : 'bg-red-50 border-red-300 text-red-700'
+                      }`}
+                    >
+                      {isPlus ? '+' : '−'}
+                    </button>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      placeholder="金額"
+                      value={slot.amountInput}
+                      onChange={(e) =>
+                        setSlot(idx, { amountInput: sanitizePositive(e.target.value) })
+                      }
+                      className="!w-24 text-right num"
+                      aria-label={`玩家 ${idx + 1} 金額`}
+                    />
+                  </div>
+                );
+              })}
               <div className="text-[14px] text-ink-3">
-                贏家輸入正數、輸家輸入負數；4 人總和需為 0
+                贏家選「+」、輸家選「−」；金額僅輸入正整數，4 人總和需為 0
               </div>
             </div>
           )}
