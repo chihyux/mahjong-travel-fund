@@ -173,7 +173,7 @@ export default function WeeklySettlements() {
 
               <div className="space-y-2 mb-3">
                 {perPlayerList.map(({ pid, amt, cut, tsumo, net }) => {
-                  const showBreakdown = amt > 0;
+                  const showBreakdown = cut > 0 || tsumo > 0;
                   return (
                     <div key={pid}>
                       <div className="flex items-center justify-between text-[16px]">
@@ -196,27 +196,42 @@ export default function WeeklySettlements() {
                         </span>
                       </div>
                       {showBreakdown && (
-                        <div className="text-[13px] text-ink-3 pl-5 mt-0.5">
-                          實拿{" "}
-                          <span className="num text-sage-deep font-medium">
-                            {fmtSignedMoney(net, symbol)}
-                          </span>{" "}
-                          = <span className="num">{fmtMoney(amt, symbol)}</span>
+                        <div className="text-[13px] text-ink-3 pl-5 mt-0.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                          <span className="whitespace-nowrap">
+                            {net < 0 ? "實付" : "實拿"}{" "}
+                            <span
+                              className={`num font-medium ${
+                                net > 0
+                                  ? "text-sage-deep"
+                                  : net < 0
+                                    ? "text-red-700"
+                                    : "text-ink-3"
+                              }`}
+                            >
+                              {net < 0
+                                ? fmtMoney(Math.abs(net), symbol)
+                                : fmtSignedMoney(net, symbol)}
+                            </span>
+                          </span>
+                          <span className="whitespace-nowrap">
+                            ={" "}
+                            <span className="num">
+                              {fmtSignedMoney(amt, symbol)}
+                            </span>
+                          </span>
                           {cut > 0 && (
-                            <>
-                              {" "}
+                            <span className="whitespace-nowrap">
                               − 抽成{" "}
                               <span className="num">{fmtMoney(cut, symbol)}</span>
-                            </>
+                            </span>
                           )}
                           {tsumo > 0 && (
-                            <>
-                              {" "}
+                            <span className="whitespace-nowrap">
                               − 自摸{" "}
                               <span className="num">
                                 {fmtMoney(tsumo, symbol)}
                               </span>
-                            </>
+                            </span>
                           )}
                         </div>
                       )}
@@ -259,7 +274,7 @@ export default function WeeklySettlements() {
                       {fmtDate(g.date)}
                       {g.note ? ` · ${g.note}` : ""}
                     </div>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
                       {g.rows.map((row) => {
                         const amt = Number(row.amount) || 0;
                         const cut = Number(row.cut_amount) || 0;

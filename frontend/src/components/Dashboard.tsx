@@ -1,4 +1,4 @@
-import { useStore } from '../hooks/useStore';
+import { useStore } from "../hooks/useStore";
 import {
   buildLeaderboard,
   calcBalance,
@@ -8,15 +8,15 @@ import {
   hasUnsettledPriorWeek,
   playerName,
   weekRangeLabel,
-  weekStartISO
-} from '../lib/utils';
-import type { ViewKey } from '../types';
-import Card from './ui/Card';
-import RankBadge from './ui/RankBadge';
-import Progress from './ui/Progress';
-import Button from './ui/Button';
-import Skeleton from './ui/Skeleton';
-import ContributionPie from './charts/ContributionPie';
+  weekStartISO,
+} from "../lib/utils";
+import type { ViewKey } from "../types";
+import Card from "./ui/Card";
+import RankBadge from "./ui/RankBadge";
+import Progress from "./ui/Progress";
+import Button from "./ui/Button";
+import Skeleton from "./ui/Skeleton";
+import ContributionPie from "./charts/ContributionPie";
 
 interface DashboardProps {
   onNav: (next: ViewKey) => void;
@@ -26,9 +26,9 @@ export default function Dashboard({ onNav }: DashboardProps) {
   const { data, loading, isAdmin } = useStore();
   const { players, tsumos, rounds, withdrawals, settings } = data;
 
-  const symbol = settings.currency_symbol || '$';
+  const symbol = settings.currency_symbol || "$";
   const goal = Number(settings.goal) || 0;
-  const goalName = settings.goal_name || '旅遊目標';
+  const goalName = settings.goal_name || "旅遊目標";
 
   const { balance, income, out } = calcBalance(tsumos, rounds, withdrawals);
   const { list: leaderboard } = buildLeaderboard(players, tsumos, rounds);
@@ -40,14 +40,20 @@ export default function Dashboard({ onNav }: DashboardProps) {
   const thisMonday = weekStartISO(today);
   const showReminder = hasUnsettledPriorWeek(rounds, today);
   const unsettledWeeks = groupRoundsByWeek(rounds).filter(
-    (w) => w.weekStart < thisMonday && !w.settled
+    (w) => w.weekStart < thisMonday && !w.settled,
   );
 
   const recentTsumos = [...(tsumos ?? [])]
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    )
     .slice(0, 3);
   const recentRounds = [...(rounds ?? [])]
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    )
     .slice(0, 3);
 
   if (loading) {
@@ -71,17 +77,21 @@ export default function Dashboard({ onNav }: DashboardProps) {
           <div className="flex items-start gap-3">
             <span className="text-3xl">📣</span>
             <div className="flex-1 min-w-0">
-              <div className="font-serif text-[20px] font-bold mb-1">該結算囉</div>
+              <div className="font-serif text-[20px] font-bold mb-1">
+                該結算囉
+              </div>
               <div className="text-[16px] text-ink-2 mb-3">
                 有 {unsettledWeeks.length} 週還沒標記結算
                 {unsettledWeeks[0] && (
-                  <>（最近一週：{weekRangeLabel(unsettledWeeks[0].weekStart)}）</>
+                  <>
+                    （最近一週：{weekRangeLabel(unsettledWeeks[0].weekStart)}）
+                  </>
                 )}
               </div>
               <Button
                 size="md"
                 variant="honey"
-                onClick={() => onNav('weeklySettlements')}
+                onClick={() => onNav("weeklySettlements")}
               >
                 去結算
               </Button>
@@ -91,23 +101,35 @@ export default function Dashboard({ onNav }: DashboardProps) {
       )}
 
       <Card>
-        <div className="text-[18px] font-medium text-ink-2 mb-1">🌿 目前基金</div>
-        <div className="num text-hero md:text-hero-sm text-ink">{fmtMoney(balance, symbol)}</div>
+        <div className="text-[18px] font-medium text-ink-2 mb-1">目前基金</div>
+        <div className="num text-hero md:text-hero-sm text-ink">
+          {fmtMoney(balance, symbol)}
+        </div>
 
         {goal > 0 && (
           <div className="mt-5 p-4 rounded-2xl bg-hint border border-divider">
             <div className="flex items-baseline justify-between mb-2 gap-2">
-              <span className="text-[18px] font-bold text-sage-deep">🌸 {goalName}</span>
-              <span className="num text-[26px] text-honey flex-shrink-0">{Math.floor(progress)}%</span>
+              <span className="text-[18px] font-bold text-sage-deep">
+                {goalName}
+              </span>
+              <span className="num text-[26px] text-honey flex-shrink-0">
+                {Math.floor(progress)}%
+              </span>
             </div>
             <Progress value={balance} max={goal} />
             <div className="text-[18px] text-ink-2 mt-2">
               {remaining > 0 ? (
                 <>
-                  還差 <span className="num text-ink">{fmtMoney(remaining, symbol)}</span> 就達標
+                  還差{" "}
+                  <span className="num text-ink">
+                    {fmtMoney(remaining, symbol)}
+                  </span>{" "}
+                  就達標
                 </>
               ) : (
-                <span className="text-sage-deep font-bold">🎉 已達標，可以出發囉！</span>
+                <span className="text-sage-deep font-bold">
+                  🎉 已達標，可以出發囉！
+                </span>
               )}
             </div>
           </div>
@@ -120,7 +142,9 @@ export default function Dashboard({ onNav }: DashboardProps) {
           </div>
           <div>
             <div className="text-[16px] text-ink-3 mb-1">已旅遊支出</div>
-            <div className="num text-[22px] text-ink-2">{fmtMoney(out, symbol)}</div>
+            <div className="num text-[22px] text-ink-2">
+              {fmtMoney(out, symbol)}
+            </div>
           </div>
         </div>
       </Card>
@@ -128,16 +152,24 @@ export default function Dashboard({ onNav }: DashboardProps) {
       {isAdmin && (
         <Card>
           <div className="grid gap-3">
-            <Button icon="🀄" onClick={() => onNav('addTsumo')}>
+            <Button icon="🀄" onClick={() => onNav("addTsumo")}>
               記錄自摸
             </Button>
-            <Button icon="💰" variant="honey" onClick={() => onNav('addRound')}>
+            <Button icon="💰" variant="honey" onClick={() => onNav("addRound")}>
               每局結算
             </Button>
-            <Button icon="📅" variant="secondary" onClick={() => onNav('weeklySettlements')}>
+            <Button
+              icon="📅"
+              variant="secondary"
+              onClick={() => onNav("weeklySettlements")}
+            >
               週結算
             </Button>
-            <Button icon="🧳" variant="secondary" onClick={() => onNav('withdrawals')}>
+            <Button
+              icon="🧳"
+              variant="secondary"
+              onClick={() => onNav("withdrawals")}
+            >
               記錄旅遊支出
             </Button>
           </div>
@@ -162,12 +194,17 @@ export default function Dashboard({ onNav }: DashboardProps) {
               <div key={p.id} className="flex items-center gap-4">
                 <RankBadge rank={i + 1} />
                 <div className="flex-1 min-w-0">
-                  <div className="text-[22px] font-medium truncate">{p.name}</div>
+                  <div className="text-[22px] font-medium truncate">
+                    {p.name}
+                  </div>
                   <div className="text-[16px] text-ink-3">
-                    自摸 {p.tsumoCount} 次 {fmtMoney(p.tsumo, symbol)} · 結算 {fmtMoney(p.settle, symbol)}
+                    自摸 {p.tsumoCount} 次 {fmtMoney(p.tsumo, symbol)} · 結算{" "}
+                    {fmtMoney(p.settle, symbol)}
                   </div>
                 </div>
-                <div className="num text-[24px] text-sage-deep flex-shrink-0">{fmtMoney(p.total, symbol)}</div>
+                <div className="num text-[24px] text-sage-deep flex-shrink-0">
+                  {fmtMoney(p.total, symbol)}
+                </div>
               </div>
             ))}
           </div>
@@ -175,7 +212,9 @@ export default function Dashboard({ onNav }: DashboardProps) {
 
         {topN.length >= 2 && (
           <div className="mt-6 pt-6 border-t border-divider">
-            <div className="text-[18px] font-medium text-ink-2 mb-3">貢獻占比</div>
+            <div className="text-[18px] font-medium text-ink-2 mb-3">
+              貢獻占比
+            </div>
             <ContributionPie data={topN} />
           </div>
         )}
@@ -194,12 +233,17 @@ export default function Dashboard({ onNav }: DashboardProps) {
                   <span className="text-2xl">🀄</span>
                   <div>
                     <div className="text-[18px] font-medium">
-                      {playerName(players, t.player_id)} 自摸 × {String(t.count)}
+                      {playerName(players, t.player_id)} 自摸 ×{" "}
+                      {String(t.count)}
                     </div>
-                    <div className="text-[15px] text-ink-3">{fmtRelativeDate(t.date || t.created_at)}</div>
+                    <div className="text-[15px] text-ink-3">
+                      {fmtRelativeDate(t.date || t.created_at)}
+                    </div>
                   </div>
                 </div>
-                <div className="num text-[20px] text-sage-deep">+{fmtMoney(t.amount, symbol)}</div>
+                <div className="num text-[20px] text-sage-deep">
+                  +{fmtMoney(t.amount, symbol)}
+                </div>
               </div>
             ))}
             {recentRounds.map((r) => {
@@ -213,12 +257,13 @@ export default function Dashboard({ onNav }: DashboardProps) {
                     <span className="text-2xl">💰</span>
                     <div>
                       <div className="text-[18px] font-medium">
-                        {playerName(players, r.player_id)}{' '}
-                        {amt >= 0 ? '贏' : '輸'} {fmtMoney(Math.abs(amt), symbol)}
+                        {playerName(players, r.player_id)}{" "}
+                        {amt >= 0 ? "贏" : "輸"}{" "}
+                        {fmtMoney(Math.abs(amt), symbol)}
                       </div>
                       <div className="text-[15px] text-ink-3">
                         {fmtRelativeDate(r.date || r.created_at)}
-                        {r.note ? ` · ${r.note}` : ''}
+                        {r.note ? ` · ${r.note}` : ""}
                       </div>
                     </div>
                   </div>
@@ -237,7 +282,7 @@ export default function Dashboard({ onNav }: DashboardProps) {
       {!isAdmin && (
         <div className="text-center py-4">
           <button
-            onClick={() => onNav('login')}
+            onClick={() => onNav("login")}
             className="text-[16px] text-ink-3 underline underline-offset-4"
           >
             管理員登入

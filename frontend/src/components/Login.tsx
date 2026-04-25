@@ -1,7 +1,7 @@
-import { useState, type FormEvent } from 'react';
-import { useStore } from '../hooks/useStore';
-import Card from './ui/Card';
-import Button from './ui/Button';
+import { useState, type FormEvent } from "react";
+import { useStore } from "../hooks/useStore";
+import Card from "./ui/Card";
+import Button from "./ui/Button";
 
 interface LoginProps {
   onDone: () => void;
@@ -9,22 +9,22 @@ interface LoginProps {
 
 export default function Login({ onDone }: LoginProps) {
   const { actions, data } = useStore();
-  const [password, setPassword] = useState('');
+  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [errMsg, setErrMsg] = useState('');
+  const [errMsg, setErrMsg] = useState("");
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!password.trim()) return;
     setBusy(true);
-    setErrMsg('');
+    setErrMsg("");
     const ok = await actions.login(password.trim());
     setBusy(false);
     if (ok) {
       onDone();
     } else {
-      setErrMsg('密碼錯誤，請重新輸入');
-      setPassword('');
+      setErrMsg("密碼錯誤，請重新輸入");
+      setPassword("");
     }
   };
 
@@ -32,9 +32,8 @@ export default function Login({ onDone }: LoginProps) {
     <div className="max-w-md mx-auto">
       <Card>
         <div className="text-center mb-6">
-          <div className="text-4xl mb-2">🌿</div>
           <h1 className="font-serif text-[28px] font-bold">
-            {data.settings.group_name || '家庭旅遊基金'}
+            {data.settings.group_name || "家庭旅遊基金"}
           </h1>
           <p className="text-[16px] text-ink-3 mt-1">管理員登入</p>
         </div>
@@ -47,7 +46,7 @@ export default function Login({ onDone }: LoginProps) {
               value={password}
               onChange={(e) => {
                 setPassword(e.target.value);
-                if (errMsg) setErrMsg('');
+                if (errMsg) setErrMsg("");
               }}
               autoFocus
               placeholder="請輸入管理員密碼"
@@ -61,7 +60,7 @@ export default function Login({ onDone }: LoginProps) {
           </div>
 
           <Button type="submit" disabled={busy || !password.trim()}>
-            {busy ? '驗證中…' : '登入'}
+            {busy ? "驗證中…" : "登入"}
           </Button>
 
           <button
