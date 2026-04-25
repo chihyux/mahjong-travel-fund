@@ -52,18 +52,15 @@ export default function History() {
   };
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <Segmented<HistoryTab>
-          value={tab}
-          onChange={setTab}
-          options={[
-            { value: "tsumos", label: `🀄 自摸 (${tsumoList.length})` },
-            { value: "rounds", label: `💰 局 (${roundGroups.length})` },
-          ]}
-        />
-      </Card>
-
+    <div className="space-y-4">
+      <Segmented<HistoryTab>
+        value={tab}
+        onChange={setTab}
+        options={[
+          { value: "tsumos", label: `🀄 自摸 (${tsumoList.length})` },
+          { value: "rounds", label: `💰 局 (${roundGroups.length})` },
+        ]}
+      />
       <Card>
         {tab === "tsumos" ? (
           tsumoList.length === 0 ? (
@@ -71,7 +68,7 @@ export default function History() {
           ) : (
             <div className="divide-y divide-divider">
               {tsumoList.map((t) => (
-                <div key={t.id} className="py-4 flex items-center gap-3">
+                <div key={t.id} className="py-2 flex items-center gap-3">
                   <div className="text-2xl">🀄</div>
                   <div className="flex-1 min-w-0">
                     <div className="text-[18px] font-medium">

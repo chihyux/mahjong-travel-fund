@@ -108,9 +108,9 @@ export default function WeeklySettlements() {
               net: amt - d.cut - d.tsumo,
             };
           })
-          .sort((a, b) => b.amt - a.amt);
+          .sort((a, b) => b.net - a.net);
         const top = perPlayerList[0];
-        const topWinnerPid = top && top.amt > 0 ? top.pid : null;
+        const topWinnerPid = top && top.net > 0 ? top.pid : null;
         const weekTsumoTotal = Object.values(detail).reduce(
           (s, d) => s + d.tsumo,
           0,
@@ -123,7 +123,7 @@ export default function WeeklySettlements() {
 
         return (
           <Card key={w.weekStart} padding="p-0">
-            <div className="p-5">
+            <div className="p-4">
               <div className="flex items-start justify-between gap-3 mb-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -170,7 +170,6 @@ export default function WeeklySettlements() {
                   )}
                 </div>
               </div>
-
               <div className="space-y-2 mb-3">
                 {perPlayerList.map(({ pid, amt, cut, tsumo, net }) => {
                   const showBreakdown = cut > 0 || tsumo > 0;
@@ -185,36 +184,20 @@ export default function WeeklySettlements() {
                         </span>
                         <span
                           className={`num ${
-                            amt > 0
+                            net > 0
                               ? "text-sage-deep"
-                              : amt < 0
+                              : net < 0
                                 ? "text-red-700"
                                 : "text-ink-3"
                           }`}
                         >
-                          {fmtSignedMoney(amt, symbol)}
+                          {fmtSignedMoney(net, symbol)}
                         </span>
                       </div>
                       {showBreakdown && (
                         <div className="text-[13px] text-ink-3 pl-5 mt-0.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
                           <span className="whitespace-nowrap">
-                            {net < 0 ? "實付" : "實拿"}{" "}
-                            <span
-                              className={`num font-medium ${
-                                net > 0
-                                  ? "text-sage-deep"
-                                  : net < 0
-                                    ? "text-red-700"
-                                    : "text-ink-3"
-                              }`}
-                            >
-                              {net < 0
-                                ? fmtMoney(Math.abs(net), symbol)
-                                : fmtSignedMoney(net, symbol)}
-                            </span>
-                          </span>
-                          <span className="whitespace-nowrap">
-                            ={" "}
+                            總計{" "}
                             <span className="num">
                               {fmtSignedMoney(amt, symbol)}
                             </span>
@@ -222,7 +205,9 @@ export default function WeeklySettlements() {
                           {cut > 0 && (
                             <span className="whitespace-nowrap">
                               − 抽成{" "}
-                              <span className="num">{fmtMoney(cut, symbol)}</span>
+                              <span className="num">
+                                {fmtMoney(cut, symbol)}
+                              </span>
                             </span>
                           )}
                           {tsumo > 0 && (
@@ -239,7 +224,6 @@ export default function WeeklySettlements() {
                   );
                 })}
               </div>
-
               <div className="flex items-center gap-2 flex-wrap">
                 <Button
                   variant="ghost"
@@ -265,7 +249,6 @@ export default function WeeklySettlements() {
                 )}
               </div>
             </div>
-
             {isOpen && (
               <div className="border-t border-divider divide-y divide-divider">
                 {w.rounds.map((g) => (
@@ -348,7 +331,6 @@ export default function WeeklySettlements() {
           </Card>
         );
       })}
-
       <ConfirmDialog
         open={!!confirm}
         title={confirm?.settled ? "標記已結算？" : "取消結算？"}
