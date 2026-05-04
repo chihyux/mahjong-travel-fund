@@ -30,11 +30,11 @@ export default function History() {
 
   const tsumoList = useMemo(
     () =>
-      [...(tsumos ?? [])].sort(
-        (a, b) =>
-          new Date(b.created_at || b.date).getTime() -
-          new Date(a.created_at || a.date).getTime(),
-      ),
+      [...(tsumos ?? [])].sort((a, b) => {
+        const dateCmp = (b.date || "").localeCompare(a.date || "");
+        if (dateCmp !== 0) return dateCmp;
+        return (b.created_at || "").localeCompare(a.created_at || "");
+      }),
     [tsumos],
   );
 

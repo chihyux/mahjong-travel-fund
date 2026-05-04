@@ -244,6 +244,7 @@ export function asBool(v: BoolLike | null | undefined): boolean {
 export interface RoundGroup {
   round_id: Id;
   date: IsoDate;
+  created_at?: IsoDate;
   note?: string;
   rows: Round[];
   cutTotal: number;
@@ -260,6 +261,7 @@ export function groupByRoundId(rounds: Round[] | undefined): RoundGroup[] {
       g = {
         round_id: key,
         date: r.date,
+        created_at: r.created_at,
         note: r.note,
         rows: [],
         cutTotal: 0,
@@ -273,9 +275,11 @@ export function groupByRoundId(rounds: Round[] | undefined): RoundGroup[] {
     if (!asBool(r.settled)) g.settled = false;
     if (r.note && !g.note) g.note = r.note;
   }
-  return [...map.values()].sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-  );
+  return [...map.values()].sort((a, b) => {
+    const dateCmp = (b.date || '').localeCompare(a.date || '');
+    if (dateCmp !== 0) return dateCmp;
+    return (b.created_at || '').localeCompare(a.created_at || '');
+  });
 }
 
 export interface WeekBucket {
