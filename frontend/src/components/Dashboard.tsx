@@ -240,7 +240,7 @@ export default function Dashboard({ onNav }: DashboardProps) {
                     {p.name}
                   </div>
                   <div className="text-[16px] text-ink-3">
-                    {p.roundCount} 局
+                    打了 {p.roundCount} 局
                   </div>
                 </div>
                 <div className="num text-[24px] text-red-700 flex-shrink-0">
