@@ -225,10 +225,13 @@ export default function Dashboard({ onNav }: DashboardProps) {
 
       {losers.length > 0 && (
         <Card>
-          <div className="flex items-center gap-3 mb-5">
+          <div className="flex items-center gap-3 mb-2">
             <div className="flex-1 h-px bg-divider" />
             <span className="font-serif text-[22px] font-bold">輸家榜</span>
             <div className="flex-1 h-px bg-divider" />
+          </div>
+          <div className="text-[14px] text-ink-3 text-center mb-5">
+            僅計每局結算輸贏，自摸不計入
           </div>
 
           <div className="space-y-4">
