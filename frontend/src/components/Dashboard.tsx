@@ -1,9 +1,11 @@
 import { useStore } from "../hooks/useStore";
 import {
   buildLeaderboard,
+  buildLoserboard,
   calcBalance,
   fmtMoney,
   fmtRelativeDate,
+  fmtSignedMoney,
   groupRoundsByWeek,
   hasUnsettledPriorWeek,
   playerName,
@@ -33,6 +35,7 @@ export default function Dashboard({ onNav }: DashboardProps) {
   const { balance, income, out } = calcBalance(tsumos, rounds, withdrawals);
   const { list: leaderboard } = buildLeaderboard(players, tsumos, rounds);
   const topN = leaderboard.slice(0, 10);
+  const losers = buildLoserboard(players, rounds);
   const progress = goal > 0 ? Math.min(100, (balance / goal) * 100) : 0;
   const remaining = Math.max(0, goal - balance);
 
@@ -219,6 +222,35 @@ export default function Dashboard({ onNav }: DashboardProps) {
           </div>
         )}
       </Card>
+
+      {losers.length > 0 && (
+        <Card>
+          <div className="flex items-center gap-3 mb-5">
+            <div className="flex-1 h-px bg-divider" />
+            <span className="font-serif text-[22px] font-bold">輸家榜</span>
+            <div className="flex-1 h-px bg-divider" />
+          </div>
+
+          <div className="space-y-4">
+            {losers.map((p, i) => (
+              <div key={p.id} className="flex items-center gap-4">
+                <RankBadge rank={i + 1} variant="loser" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[22px] font-medium truncate">
+                    {p.name}
+                  </div>
+                  <div className="text-[16px] text-ink-3">
+                    {p.roundCount} 局
+                  </div>
+                </div>
+                <div className="num text-[24px] text-red-700 flex-shrink-0">
+                  {fmtSignedMoney(p.netAmount, symbol)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {(recentTsumos.length > 0 || recentRounds.length > 0) && (
         <Card>
