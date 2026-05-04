@@ -324,19 +324,30 @@ export interface LoserboardEntry {
   name: string;
   netAmount: number;   // 必為負數
   roundCount: number;  // 該玩家在 rounds 中出現的列數
+  tsumoCount: number;  // 自摸次數總和（已乘 count）
+  tsumoAmount: number; // 自摸貢獻基金的金額總和
 }
 
 export function buildLoserboard(
   players: Player[],
+  tsumos: Tsumo[] | undefined,
   rounds: Round[] | undefined
 ): LoserboardEntry[] {
   const netByPid: Record<Id, number> = {};
-  const countByPid: Record<Id, number> = {};
+  const roundCountByPid: Record<Id, number> = {};
+  const tsumoCountByPid: Record<Id, number> = {};
+  const tsumoAmountByPid: Record<Id, number> = {};
 
   for (const r of rounds ?? []) {
     const pid = r.player_id;
     netByPid[pid] = (netByPid[pid] ?? 0) + (Number(r.amount) || 0);
-    countByPid[pid] = (countByPid[pid] ?? 0) + 1;
+    roundCountByPid[pid] = (roundCountByPid[pid] ?? 0) + 1;
+  }
+
+  for (const t of tsumos ?? []) {
+    const pid = t.player_id;
+    tsumoCountByPid[pid] = (tsumoCountByPid[pid] ?? 0) + (Number(t.count) || 1);
+    tsumoAmountByPid[pid] = (tsumoAmountByPid[pid] ?? 0) + (Number(t.amount) || 0);
   }
 
   return players
@@ -344,7 +355,9 @@ export function buildLoserboard(
       id: p.id,
       name: p.name,
       netAmount: netByPid[p.id] ?? 0,
-      roundCount: countByPid[p.id] ?? 0
+      roundCount: roundCountByPid[p.id] ?? 0,
+      tsumoCount: tsumoCountByPid[p.id] ?? 0,
+      tsumoAmount: tsumoAmountByPid[p.id] ?? 0
     }))
     .filter((e) => e.netAmount < 0)
     .sort((a, b) => a.netAmount - b.netAmount)

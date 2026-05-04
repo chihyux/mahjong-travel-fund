@@ -35,7 +35,7 @@ export default function Dashboard({ onNav }: DashboardProps) {
   const { balance, income, out } = calcBalance(tsumos, rounds, withdrawals);
   const { list: leaderboard } = buildLeaderboard(players, tsumos, rounds);
   const topN = leaderboard.slice(0, 10);
-  const losers = buildLoserboard(players, rounds);
+  const losers = buildLoserboard(players, tsumos, rounds);
   const progress = goal > 0 ? Math.min(100, (balance / goal) * 100) : 0;
   const remaining = Math.max(0, goal - balance);
 
@@ -241,6 +241,12 @@ export default function Dashboard({ onNav }: DashboardProps) {
                   </div>
                   <div className="text-[16px] text-ink-3">
                     打了 {p.roundCount} 局
+                    {p.tsumoCount > 0 && (
+                      <>
+                        {" · 自摸 "}
+                        {p.tsumoCount} 次共 {fmtMoney(p.tsumoAmount, symbol)}
+                      </>
+                    )}
                   </div>
                 </div>
                 <div className="num text-[24px] text-red-700 flex-shrink-0">
