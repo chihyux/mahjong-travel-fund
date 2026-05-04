@@ -318,5 +318,38 @@ export function hasUnsettledPriorWeek(
   return weeks.some((w) => w.weekStart < thisMonday && !w.settled);
 }
 
+// ===== 輸家榜 =====
+export interface LoserboardEntry {
+  id: Id;
+  name: string;
+  netAmount: number;   // 必為負數
+  roundCount: number;  // 該玩家在 rounds 中出現的列數
+}
+
+export function buildLoserboard(
+  players: Player[],
+  rounds: Round[] | undefined
+): LoserboardEntry[] {
+  const netByPid: Record<Id, number> = {};
+  const countByPid: Record<Id, number> = {};
+
+  for (const r of rounds ?? []) {
+    const pid = r.player_id;
+    netByPid[pid] = (netByPid[pid] ?? 0) + (Number(r.amount) || 0);
+    countByPid[pid] = (countByPid[pid] ?? 0) + 1;
+  }
+
+  return players
+    .map<LoserboardEntry>((p) => ({
+      id: p.id,
+      name: p.name,
+      netAmount: netByPid[p.id] ?? 0,
+      roundCount: countByPid[p.id] ?? 0
+    }))
+    .filter((e) => e.netAmount < 0)
+    .sort((a, b) => a.netAmount - b.netAmount)
+    .slice(0, 10);
+}
+
 export const sleep = (ms: number): Promise<void> =>
   new Promise((r) => setTimeout(r, ms));
