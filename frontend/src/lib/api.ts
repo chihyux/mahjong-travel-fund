@@ -5,8 +5,8 @@ import type {
   Id,
   PlayerUpdatePayload,
   RoundPayload,
+  RoundWithTsumosPayload,
   SettingsMap,
-  TsumoPayload,
   TsumoUpdatePayload,
   WithdrawalPayload
 } from '../types';
@@ -52,8 +52,6 @@ export const api = {
   deletePlayer: (password: string, id: Id) =>
     post<unknown>({ action: 'deletePlayer', password, id }),
 
-  addTsumo: (password: string, payload: TsumoPayload) =>
-    post<unknown>({ action: 'addTsumo', password, ...payload }),
   updateTsumo: (password: string, payload: TsumoUpdatePayload) =>
     post<unknown>({ action: 'updateTsumo', password, ...payload }),
   deleteTsumo: (password: string, id: Id) =>
@@ -61,6 +59,8 @@ export const api = {
 
   addRound: (password: string, payload: RoundPayload) =>
     post<unknown>({ action: 'addRound', password, ...payload }),
+  addRoundWithTsumos: (password: string, payload: RoundWithTsumosPayload) =>
+    post<unknown>({ action: 'addRoundWithTsumos', password, ...payload }),
   deleteRound: (password: string, round_id: Id) =>
     post<unknown>({ action: 'deleteRound', password, round_id }),
   markWeekSettled: (password: string, week_start: string, settled: boolean) =>
