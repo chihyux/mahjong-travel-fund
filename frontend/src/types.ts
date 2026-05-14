@@ -88,6 +88,18 @@ export interface RoundPayload {
   note?: string;
 }
 
+export interface RoundTsumoEntry {
+  player_id: Id;
+  count: number;
+}
+
+export interface RoundWithTsumosPayload {
+  date: IsoDate;
+  entries: RoundEntry[];           // 必須恰好 4 筆，玩家不重複，amount 總和 = 0
+  tsumos: RoundTsumoEntry[];       // 0..4 筆，count > 0，player_id 必屬 entries
+  note?: string;
+}
+
 export interface WithdrawalPayload {
   date: IsoDate;
   amount: number;
@@ -138,7 +150,6 @@ export type ViewKey =
   | 'dashboard'
   | 'history'
   | 'login'
-  | 'addTsumo'
   | 'addRound'
   | 'weeklySettlements'
   | 'players'
