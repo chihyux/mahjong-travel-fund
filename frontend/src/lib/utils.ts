@@ -221,25 +221,6 @@ export function playerName(players: Player[], id: Id): string {
   return p ? p.name : '(已刪除)';
 }
 
-// ===== 最常自摸的玩家（下次優先顯示）=====
-export function recentTsumoPlayers(tsumos: Tsumo[] | undefined, limit = 3): Id[] {
-  const sorted = [...(tsumos ?? [])].sort((a, b) => {
-    const ta = new Date(a.created_at || a.date).getTime();
-    const tb = new Date(b.created_at || b.date).getTime();
-    return tb - ta;
-  });
-  const seen = new Set<Id>();
-  const result: Id[] = [];
-  for (const t of sorted) {
-    if (!seen.has(t.player_id)) {
-      seen.add(t.player_id);
-      result.push(t.player_id);
-      if (result.length >= limit) break;
-    }
-  }
-  return result;
-}
-
 // ===== Boolean 正規化 =====
 export function asBool(v: BoolLike | null | undefined): boolean {
   if (typeof v === 'boolean') return v;
@@ -376,7 +357,7 @@ export function buildSettledRanking(
     if (!wk || !settledWeekStarts.has(wk)) continue;
     const pid = t.player_id;
     tsumoAmountByPid[pid] = (tsumoAmountByPid[pid] ?? 0) + (Number(t.amount) || 0);
-    tsumoCountByPid[pid] = (tsumoCountByPid[pid] ?? 0) + (Number(t.count) || 1);
+    tsumoCountByPid[pid] = (tsumoCountByPid[pid] ?? 0) + (Number(t.count) || 0);
   }
 
   const list = players

@@ -68,22 +68,21 @@ export default function AddRound({ onDone }: AddRoundProps) {
 
   // 玩家從某 slot 被換掉 → 清除舊 player 的 tsumo count
   const setSlotPlayer = (idx: number, newPid: Id) => {
-    setSlots((prev) => {
-      const oldPid = prev[idx]?.player_id ?? null;
-      const next = prev.map((s, i) => (i === idx ? { ...s, player_id: newPid } : s));
-      if (oldPid && oldPid !== newPid) {
-        const stillUsed = next.some((s) => s.player_id === oldPid);
-        if (!stillUsed) {
-          setTsumoCounts((tc) => {
-            if (tc[oldPid] === undefined) return tc;
-            const copy = { ...tc };
-            delete copy[oldPid];
-            return copy;
-          });
-        }
+    const oldPid = slots[idx]?.player_id ?? null;
+    setSlots((prev) =>
+      prev.map((s, i) => (i === idx ? { ...s, player_id: newPid } : s))
+    );
+    if (oldPid && oldPid !== newPid) {
+      const stillUsed = slots.some((s, i) => i !== idx && s.player_id === oldPid);
+      if (!stillUsed) {
+        setTsumoCounts((tc) => {
+          if (tc[oldPid] === undefined) return tc;
+          const copy = { ...tc };
+          delete copy[oldPid];
+          return copy;
+        });
       }
-      return next;
-    });
+    }
   };
 
   const entries = useMemo(

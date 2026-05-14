@@ -69,7 +69,7 @@ export default function Shell({ current, onNav, children }: ShellProps) {
               <>
                 <div className="h-px bg-divider my-3 mx-3" />
                 <NavItem
-                  icon="💰"
+                  icon="🀄"
                   label="每局結算"
                   active={current === "addRound"}
                   onClick={() => onNav("addRound")}
