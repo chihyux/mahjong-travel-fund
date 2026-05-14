@@ -1,9 +1,9 @@
-import dayjs from "dayjs";
 import { useStore } from "../hooks/useStore";
 import {
   buildLeaderboard,
   buildSettledRanking,
   calcBalance,
+  fmtMDFromISO,
   fmtMoney,
   fmtRelativeDate,
   fmtSignedMoney,
@@ -20,10 +20,6 @@ import Progress from "./ui/Progress";
 import Button from "./ui/Button";
 import Skeleton from "./ui/Skeleton";
 import ContributionPie from "./charts/ContributionPie";
-
-function fmtMDFromISO(iso: string): string {
-  return dayjs(iso).format("M/D");
-}
 
 interface DashboardProps {
   onNav: (next: ViewKey) => void;

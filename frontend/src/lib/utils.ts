@@ -45,6 +45,14 @@ export function fmtDate(value: string | Date | null | undefined): string {
   return d.format('YYYY/MM/DD');
 }
 
+// 'YYYY-MM-DD' → 'M/D'
+export function fmtMDFromISO(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = dayjs(iso);
+  if (!d.isValid()) return String(iso);
+  return d.format('M/D');
+}
+
 export function todayISO(): string {
   return dayjs().format('YYYY-MM-DD');
 }
