@@ -13,10 +13,10 @@ import {
   type Id,
   type PlayerUpdatePayload,
   type RoundPayload,
+  type RoundWithTsumosPayload,
   type SettingsMap,
   type ToastMessage,
   type ToastType,
-  type TsumoPayload,
   type TsumoUpdatePayload,
   type WithdrawalPayload
 } from '../types';
@@ -31,11 +31,11 @@ interface StoreActions {
   updatePlayer: (payload: PlayerUpdatePayload) => Promise<unknown>;
   deletePlayer: (id: Id) => Promise<unknown>;
 
-  addTsumo: (payload: TsumoPayload) => Promise<unknown>;
   updateTsumo: (payload: TsumoUpdatePayload) => Promise<unknown>;
   deleteTsumo: (id: Id) => Promise<unknown>;
 
   addRound: (payload: RoundPayload) => Promise<unknown>;
+  addRoundWithTsumos: (payload: RoundWithTsumosPayload) => Promise<unknown>;
   deleteRound: (round_id: Id) => Promise<unknown>;
   markWeekSettled: (weekStart: string, settled: boolean) => Promise<unknown>;
 
@@ -168,10 +168,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     ),
     deletePlayer: wrap((pw, id: Id) => api.deletePlayer(pw, id), '已刪除'),
 
-    addTsumo: wrap(
-      (pw, payload: TsumoPayload) => api.addTsumo(pw, payload),
-      '已記錄自摸'
-    ),
     updateTsumo: wrap(
       (pw, payload: TsumoUpdatePayload) => api.updateTsumo(pw, payload),
       '已更新'
@@ -180,6 +176,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
     addRound: wrap(
       (pw, payload: RoundPayload) => api.addRound(pw, payload),
+      '已記錄本局'
+    ),
+    addRoundWithTsumos: wrap(
+      (pw, payload: RoundWithTsumosPayload) => api.addRoundWithTsumos(pw, payload),
       '已記錄本局'
     ),
     deleteRound: wrap((pw, round_id: Id) => api.deleteRound(pw, round_id), '已刪除'),
