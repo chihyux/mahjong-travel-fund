@@ -181,7 +181,7 @@ function doPost(e) {
     const writeActions = [
       'addPlayer', 'updatePlayer', 'deletePlayer',
       'addTsumo', 'updateTsumo', 'deleteTsumo',
-      'addRound', 'updateRound', 'deleteRound', 'markWeekSettled',
+      'addRound', 'addRoundWithTsumos', 'updateRound', 'deleteRound', 'markWeekSettled',
       'addWithdrawal', 'deleteWithdrawal',
       'updateSettings'
     ];
@@ -197,6 +197,7 @@ function doPost(e) {
       case 'updateTsumo': return handleUpdateTsumo(body);
       case 'deleteTsumo': return handleDeleteTsumo(body);
       case 'addRound': return handleAddRound(body);
+      case 'addRoundWithTsumos': return handleAddRoundWithTsumos(body);
       case 'updateRound': return handleUpdateRound(body);
       case 'deleteRound': return handleDeleteRound(body);
       case 'markWeekSettled': return handleMarkWeekSettled(body);
@@ -341,6 +342,88 @@ function handleAddRound(body) {
   });
 
   return okOut({ round_id: roundId });
+}
+
+// ---- 每局結算 + 自摸（合併入口） ----
+function handleAddRoundWithTsumos(body) {
+  if (!body.date) return errOut('Missing date');
+  const entries = body.entries;
+  if (!Array.isArray(entries) || entries.length !== 4) {
+    return errOut('需要 4 位玩家');
+  }
+
+  const playerIds = entries.map(e => String((e && e.player_id) || ''));
+  if (playerIds.some(id => !id)) return errOut('玩家未選齊');
+  if (new Set(playerIds).size !== 4) return errOut('玩家不可重複');
+
+  let sum = 0;
+  const normalizedEntries = entries.map(e => {
+    const amt = Number(e.amount);
+    if (!Number.isFinite(amt) || !Number.isInteger(amt)) {
+      throw new Error('amount 需為整數');
+    }
+    sum += amt;
+    return { player_id: String(e.player_id), amount: amt };
+  });
+  if (sum !== 0) return errOut('輸贏總和需為 0');
+  if (normalizedEntries.every(e => e.amount === 0)) return errOut('金額全為 0');
+
+  const tsumosInput = Array.isArray(body.tsumos) ? body.tsumos : [];
+  const playerIdSet = new Set(playerIds);
+  const seenTsumoPids = new Set();
+  const normalizedTsumos = tsumosInput.map(t => {
+    if (!t || typeof t !== 'object') throw new Error('tsumo 格式錯誤');
+    const pid = String(t.player_id || '');
+    if (!pid) throw new Error('tsumo player_id 不可空白');
+    if (!playerIdSet.has(pid)) throw new Error('tsumo player 必須是本局玩家');
+    if (seenTsumoPids.has(pid)) throw new Error('tsumo player 不可重複');
+    seenTsumoPids.add(pid);
+    const count = Number(t.count);
+    if (!Number.isFinite(count) || !Number.isInteger(count) || count <= 0) {
+      throw new Error('tsumo count 需為正整數');
+    }
+    return { player_id: pid, count: count };
+  });
+
+  const roundId = newId('rnd');
+  const date = String(body.date);
+  const note = String(body.note || '');
+  const now = nowIso();
+  const cutRatio = currentCutRatio();
+  const tsumoUnit = currentTsumoAmount();
+
+  normalizedEntries.forEach(e => {
+    const cut = e.amount > 0 ? Math.round(e.amount * cutRatio) : 0;
+    appendRow(SHEET_ROUNDS, {
+      id: newId('r'),
+      round_id: roundId,
+      date: date,
+      player_id: e.player_id,
+      amount: e.amount,
+      cut_amount: cut,
+      settled: false,
+      settled_at: '',
+      note: note,
+      created_at: now
+    });
+  });
+
+  const tsumoIds = [];
+  normalizedTsumos.forEach(t => {
+    const tid = newId('t');
+    appendRow(SHEET_TSUMOS, {
+      id: tid,
+      date: date,
+      player_id: t.player_id,
+      count: t.count,
+      amount: tsumoUnit * t.count,
+      note: '',
+      created_at: now
+    });
+    tsumoIds.push(tid);
+  });
+
+  return okOut({ round_id: roundId, tsumo_ids: tsumoIds });
 }
 
 // 更新一局。支援：
