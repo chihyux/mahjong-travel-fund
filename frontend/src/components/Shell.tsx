@@ -18,7 +18,7 @@ const PUBLIC_NAV: ReadonlyArray<NavEntry> = [
 
 const ADMIN_NAV: ReadonlyArray<NavEntry> = [
   { key: "dashboard", icon: "🌿", label: "首頁" },
-  { key: "addTsumo", icon: "🀄", label: "自摸" },
+  { key: "addRound", icon: "🀄", label: "每局結算" },
   { key: "history", icon: "📖", label: "紀錄" },
   { key: "more", icon: "☰", label: "更多" },
 ];
@@ -68,12 +68,6 @@ export default function Shell({ current, onNav, children }: ShellProps) {
             {isAdmin ? (
               <>
                 <div className="h-px bg-divider my-3 mx-3" />
-                <NavItem
-                  icon="🀄"
-                  label="記錄自摸"
-                  active={current === "addTsumo"}
-                  onClick={() => onNav("addTsumo")}
-                />
                 <NavItem
                   icon="💰"
                   label="每局結算"
