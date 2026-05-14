@@ -1,7 +1,8 @@
+import dayjs from "dayjs";
 import { useStore } from "../hooks/useStore";
 import {
   buildLeaderboard,
-  buildLoserboard,
+  buildSettledRanking,
   calcBalance,
   fmtMoney,
   fmtRelativeDate,
@@ -20,6 +21,10 @@ import Button from "./ui/Button";
 import Skeleton from "./ui/Skeleton";
 import ContributionPie from "./charts/ContributionPie";
 
+function fmtMDFromISO(iso: string): string {
+  return dayjs(iso).format("M/D");
+}
+
 interface DashboardProps {
   onNav: (next: ViewKey) => void;
 }
@@ -35,7 +40,7 @@ export default function Dashboard({ onNav }: DashboardProps) {
   const { balance, income, out } = calcBalance(tsumos, rounds, withdrawals);
   const { list: leaderboard } = buildLeaderboard(players, tsumos, rounds);
   const topN = leaderboard.slice(0, 10);
-  const losers = buildLoserboard(players, tsumos, rounds);
+  const ranking = buildSettledRanking(players, tsumos, rounds);
   const progress = goal > 0 ? Math.min(100, (balance / goal) * 100) : 0;
   const remaining = Math.max(0, goal - balance);
 
@@ -155,9 +160,6 @@ export default function Dashboard({ onNav }: DashboardProps) {
       {isAdmin && (
         <Card>
           <div className="grid gap-3">
-            <Button icon="🀄" onClick={() => onNav("addTsumo")}>
-              記錄自摸
-            </Button>
             <Button icon="💰" variant="honey" onClick={() => onNav("addRound")}>
               每局結算
             </Button>
@@ -223,43 +225,71 @@ export default function Dashboard({ onNav }: DashboardProps) {
         )}
       </Card>
 
-      {losers.length > 0 && (
-        <Card>
-          <div className="flex items-center gap-3 mb-2">
-            <div className="flex-1 h-px bg-divider" />
-            <span className="font-serif text-[22px] font-bold">輸家榜</span>
-            <div className="flex-1 h-px bg-divider" />
-          </div>
-          <div className="text-[14px] text-ink-3 text-center mb-5">
-            僅計每局結算輸贏，自摸不計入
-          </div>
-
-          <div className="space-y-4">
-            {losers.map((p, i) => (
-              <div key={p.id} className="flex items-center gap-4">
-                <RankBadge rank={i + 1} variant="loser" />
-                <div className="flex-1 min-w-0">
-                  <div className="text-[22px] font-medium truncate">
-                    {p.name}
-                  </div>
-                  <div className="text-[16px] text-ink-3">
-                    打了 {p.roundCount} 局
-                    {p.tsumoCount > 0 && (
-                      <>
-                        {" · 自摸 "}
-                        {p.tsumoCount} 次共 {fmtMoney(p.tsumoAmount, symbol)}
-                      </>
-                    )}
-                  </div>
-                </div>
-                <div className="num text-[24px] text-red-700 flex-shrink-0">
-                  {fmtSignedMoney(p.netAmount, symbol)}
-                </div>
+      {ranking.settledWeekCount === 0
+        ? rounds.length > 0 && (
+            <Card>
+              <div className="flex items-center gap-3 mb-3">
+                <div className="flex-1 h-px bg-divider" />
+                <span className="font-serif text-[22px] font-bold">已結算排名</span>
+                <div className="flex-1 h-px bg-divider" />
               </div>
-            ))}
-          </div>
-        </Card>
-      )}
+              <div className="text-center py-8 text-ink-3 text-[15px]">
+                尚無已結算資料，去「週結算」標記後會出現排名
+              </div>
+            </Card>
+          )
+        : ranking.list.length > 0 && (
+            <Card>
+              <div className="flex items-center gap-3 mb-2">
+                <div className="flex-1 h-px bg-divider" />
+                <span className="font-serif text-[22px] font-bold">已結算排名</span>
+                <div className="flex-1 h-px bg-divider" />
+              </div>
+              <div className="text-[14px] text-ink-3 text-center mb-5">
+                截至 {fmtMDFromISO(ranking.cutoffISO!)}（已結算 {ranking.settledWeekCount} 週）
+              </div>
+              <div className="space-y-4">
+                {ranking.list.map((p, i) => {
+                  const winLoss = p.winLoss;
+                  const winLossLabel =
+                    winLoss > 0
+                      ? `贏 ${fmtMoney(winLoss, symbol)}`
+                      : winLoss < 0
+                        ? `輸 ${fmtMoney(Math.abs(winLoss), symbol)}`
+                        : "持平";
+                  const tsumoLabel =
+                    p.tsumoCount > 0
+                      ? `自摸 ${p.tsumoCount} 次 ${fmtMoney(p.tsumoAmount, symbol)}`
+                      : "自摸 0";
+                  const cutLabel = p.cut > 0 ? `抽成 ${fmtMoney(p.cut, symbol)}` : null;
+
+                  return (
+                    <div key={p.id} className="flex items-center gap-4">
+                      <RankBadge rank={i + 1} />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[22px] font-medium truncate">{p.name}</div>
+                        <div className="text-[15px] text-ink-3">
+                          {winLossLabel}
+                          {cutLabel ? ` · ${cutLabel}` : ""} · {tsumoLabel}
+                        </div>
+                      </div>
+                      <div
+                        className={`num text-[24px] flex-shrink-0 ${
+                          p.net > 0
+                            ? "text-sage-deep"
+                            : p.net < 0
+                              ? "text-red-700"
+                              : "text-ink-3"
+                        }`}
+                      >
+                        {fmtSignedMoney(p.net, symbol)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          )}
 
       {(recentTsumos.length > 0 || recentRounds.length > 0) && (
         <Card>
