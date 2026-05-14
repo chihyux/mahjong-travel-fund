@@ -44,8 +44,9 @@
 ### B.1 入口調整
 
 `frontend/src/components/Dashboard.tsx`：
+
 - 移除「🀄 記錄自摸」按鈕。
-- 「💰 每局結算」按鈕標籤改為「💰 記錄一局」，仍 nav 到 `'addRound'`。
+- 「💰 每局結算」按鈕標籤改為「💰 每局結算」，仍 nav 到 `'addRound'`。
 - 其他按鈕（週結算、旅遊支出）不動。
 
 `frontend/src/App.tsx` / 路由：移除 `'addTsumo'` ViewKey 與對應 render。`types.ts` 的 `ViewKey` 移除 `'addTsumo'`。
@@ -54,7 +55,7 @@
 
 ### B.2 改寫 `AddRound.tsx`
 
-標題改為「記錄一局」。表單由上至下：
+標題改為「每局結算」。表單由上至下：
 
 1. **日期**（同現有）
 2. **四位玩家輸贏**（同現有 4 個 slot；維持 +/− 切換與金額輸入、PlayerPickerModal）
@@ -76,6 +77,7 @@
 #### 結算明細修改
 
 新增「自摸入公」一行，置於現有「抽成」之上或之下：
+
 - `tsumoCutTotal = Σ count × tsumo_amount`（即所有自摸金額；100% 入公）
 - `cutTotal` = 既有抽成
 - 「入公基金合計」改為 `cutTotal + tsumoCutTotal`
@@ -87,29 +89,38 @@
 ```ts
 await actions.addRoundWithTsumos({
   date,
-  entries: slots.map(s => ({ player_id: s.player_id, amount: signedAmount(s) })),
+  entries: slots.map((s) => ({
+    player_id: s.player_id,
+    amount: signedAmount(s),
+  })),
   tsumos: slotPlayerIds
-    .map(pid => ({ player_id: pid, count: tsumoCounts[pid] ?? 0 }))
-    .filter(t => t.count > 0),
-  note
+    .map((pid) => ({ player_id: pid, count: tsumoCounts[pid] ?? 0 }))
+    .filter((t) => t.count > 0),
+  note,
 });
 ```
 
 ### B.3 Store / API client
 
 `frontend/src/lib/api.ts`：
+
 - 新增 `addRoundWithTsumos(pw, payload)` 對應 backend action。
 - 保留 `addTsumo`（仍用於歷史刪除流程？實際上 useStore 仍會 expose `deleteTsumo`；`addTsumo` 變成 unused 可移除）。
   - 決策：保留 `addTsumo` API client，但從 store 的 `actions.addTsumo` 移除（無 caller）。或者連同 store 一起移除。**v1：一併移除 `actions.addTsumo` 與 `api.addTsumo`**（後端 action 留著，未來要再加單筆自摸入口時恢復即可）。
 
 `frontend/src/hooks/useStore.tsx`：
+
 - `StoreActions` 移除 `addTsumo`、新增 `addRoundWithTsumos`。
 - `actions.addRoundWithTsumos = wrap(...)`，toast「已記錄本局」。
 
 `frontend/src/types.ts`：
+
 - 新增 `RoundWithTsumosPayload`：
   ```ts
-  export interface RoundTsumoEntry { player_id: Id; count: number; }
+  export interface RoundTsumoEntry {
+    player_id: Id;
+    count: number;
+  }
   export interface RoundWithTsumosPayload {
     date: IsoDate;
     entries: RoundEntry[];
@@ -123,14 +134,16 @@ await actions.addRoundWithTsumos({
 ### B.4 導覽與路由
 
 `frontend/src/components/Shell.tsx`：
-- **桌面側欄**：移除「記錄自摸」`NavItem`；保留「每局結算」NavItem，但 label 改為「記錄一局」。
-- **手機底部 tab bar**：`ADMIN_NAV` 第 2 格 `{ key: 'addTsumo', icon: '🀄', label: '自摸' }` 改為 `{ key: 'addRound', icon: '🀄', label: '記錄一局' }`（沿用 🀄 emoji 以維持視覺記憶，因為自摸動作仍包含在內）。
+
+- **桌面側欄**：移除「記錄自摸」`NavItem`；保留「每局結算」NavItem，但 label 改為「每局結算」。
+- **手機底部 tab bar**：`ADMIN_NAV` 第 2 格 `{ key: 'addTsumo', icon: '🀄', label: '自摸' }` 改為 `{ key: 'addRound', icon: '🀄', label: '每局結算' }`（沿用 🀄 emoji 以維持視覺記憶，因為自摸動作仍包含在內）。
 
 `frontend/src/App.tsx`：
+
 - `imports`：移除 `import AddTsumo from "./components/AddTsumo";`。
 - `ADMIN_ONLY_VIEWS`：移除 `'addTsumo'`。
 - `renderView()`：移除 `case 'addTsumo'`。
-- `MoreMenu` items：將 `{ key: 'addRound', icon: '💰', label: '每局結算' }` 改為 `{ key: 'addRound', icon: '🀄', label: '記錄一局' }`（也順便對齊 tab bar emoji）。
+- `MoreMenu` items：將 `{ key: 'addRound', icon: '💰', label: '每局結算' }` 改為 `{ key: 'addRound', icon: '🀄', label: '每局結算' }`（也順便對齊 tab bar emoji）。
 
 ## C. 已結算排名榜
 
@@ -142,27 +155,28 @@ await actions.addRoundWithTsumos({
 export interface SettledRankingEntry {
   id: Id;
   name: string;
-  winLoss: number;     // Σ amount in settled weeks (有正有負)
-  cut: number;         // Σ cut_amount in settled weeks
+  winLoss: number; // Σ amount in settled weeks (有正有負)
+  cut: number; // Σ cut_amount in settled weeks
   tsumoAmount: number; // Σ tsumos.amount whose date falls in a settled week
-  tsumoCount: number;  // Σ tsumos.count 同上
-  net: number;         // winLoss - cut - tsumoAmount
+  tsumoCount: number; // Σ tsumos.count 同上
+  net: number; // winLoss - cut - tsumoAmount
 }
 
 export interface SettledRanking {
-  list: SettledRankingEntry[];       // 已 sort by net desc
-  cutoffISO: string | null;          // 最新已結算週的週日 (weekStart + 6 天)；無已結算週時 null
-  settledWeekCount: number;          // 已結算週數
+  list: SettledRankingEntry[]; // 已 sort by net desc
+  cutoffISO: string | null; // 最新已結算週的週日 (weekStart + 6 天)；無已結算週時 null
+  settledWeekCount: number; // 已結算週數
 }
 
 export function buildSettledRanking(
   players: Player[],
   tsumos: Tsumo[] | undefined,
-  rounds: Round[] | undefined
-): SettledRanking
+  rounds: Round[] | undefined,
+): SettledRanking;
 ```
 
 實作：
+
 1. `groupRoundsByWeek(rounds)` → 取 `w.settled === true` 的週集合 `settledWeeks`。
 2. `settledWeekStarts = new Set(settledWeeks.map(w => w.weekStart))`。
 3. 對每個 settled week 的 `rounds` 累加每位玩家的 `winLoss` 與 `cut`。
@@ -183,23 +197,25 @@ export function buildSettledRanking(
 ```tsx
 const ranking = buildSettledRanking(players, tsumos, rounds);
 
-{ranking.list.length > 0 && (
-  <Card>
-    <div className="flex items-center gap-3 mb-2">
-      <div className="flex-1 h-px bg-divider" />
-      <span className="font-serif text-[22px] font-bold">已結算排名</span>
-      <div className="flex-1 h-px bg-divider" />
-    </div>
-    <div className="text-[14px] text-ink-3 text-center mb-5">
-      截至 {fmtMD(ranking.cutoffISO!)}（已結算）
-    </div>
-    <div className="space-y-4">
-      {ranking.list.map((p, i) => (
-        <RankRow key={p.id} rank={i+1} entry={p} symbol={symbol} />
-      ))}
-    </div>
-  </Card>
-)}
+{
+  ranking.list.length > 0 && (
+    <Card>
+      <div className="flex items-center gap-3 mb-2">
+        <div className="flex-1 h-px bg-divider" />
+        <span className="font-serif text-[22px] font-bold">已結算排名</span>
+        <div className="flex-1 h-px bg-divider" />
+      </div>
+      <div className="text-[14px] text-ink-3 text-center mb-5">
+        截至 {fmtMD(ranking.cutoffISO!)}（已結算）
+      </div>
+      <div className="space-y-4">
+        {ranking.list.map((p, i) => (
+          <RankRow key={p.id} rank={i + 1} entry={p} symbol={symbol} />
+        ))}
+      </div>
+    </Card>
+  );
+}
 ```
 
 - `RankRow` 顯示：
