@@ -237,39 +237,35 @@ export default function AddRound({ onDone }: AddRoundProps) {
             <div className="text-[14px] text-ink-3 mb-3">
               {allFour
                 ? '該局誰自摸了幾次？沒人自摸就保持 0'
-                : '請先選齊 4 位玩家'}
+                : '請先選齊 4 位玩家後解鎖'}
             </div>
-            <div
-              aria-disabled={!allFour}
-              className={`space-y-3 ${allFour ? '' : 'opacity-50 pointer-events-none'}`}
-            >
-              {selectedPlayerIds.map((pid) => {
-                const count = tsumoCounts[pid] ?? 0;
-                return (
-                  <div key={pid} className="flex items-center gap-3">
-                    <div className="flex-1 min-w-0 text-[17px] truncate">
-                      {playerName(players, pid)}
+            {allFour && (
+              <div className="space-y-3">
+                {selectedPlayerIds.map((pid) => {
+                  const count = tsumoCounts[pid] ?? 0;
+                  return (
+                    <div key={pid} className="flex items-center gap-3">
+                      <div className="flex-1 min-w-0 text-[17px] truncate">
+                        {playerName(players, pid)}
+                      </div>
+                      <div className="w-40">
+                        <Stepper
+                          value={count}
+                          onChange={(v) =>
+                            setTsumoCounts((prev) => ({ ...prev, [pid]: v }))
+                          }
+                          min={0}
+                          max={9}
+                        />
+                      </div>
+                      <div className="w-20 text-right num text-[16px] text-ink-3">
+                        {fmtMoney(tsumoUnit * count, symbol)}
+                      </div>
                     </div>
-                    <div className="w-40">
-                      <Stepper
-                        value={count}
-                        onChange={(v) =>
-                          setTsumoCounts((prev) => ({ ...prev, [pid]: v }))
-                        }
-                        min={0}
-                        max={9}
-                      />
-                    </div>
-                    <div className="w-20 text-right num text-[16px] text-ink-3">
-                      {fmtMoney(tsumoUnit * count, symbol)}
-                    </div>
-                  </div>
-                );
-              })}
-              {!allFour && (
-                <div className="text-[14px] text-ink-3">（4 人選齊後解鎖）</div>
-              )}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div>
