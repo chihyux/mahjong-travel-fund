@@ -7,7 +7,6 @@ import Shell from "./components/Shell";
 import Dashboard from "./components/Dashboard";
 import History from "./components/History";
 import Login from "./components/Login";
-import AddTsumo from "./components/AddTsumo";
 import AddRound from "./components/AddRound";
 import WeeklySettlements from "./components/WeeklySettlements";
 import Players from "./components/Players";
@@ -29,7 +28,7 @@ interface MoreMenuProps {
 
 function MoreMenu({ onNav, onLogout }: MoreMenuProps) {
   const items: ReadonlyArray<MoreMenuItem> = [
-    { key: "addRound", icon: "💰", label: "每局結算" },
+    { key: "addRound", icon: "🀄", label: "每局結算" },
     { key: "weeklySettlements", icon: "📅", label: "週結算" },
     { key: "withdrawals", icon: "🧳", label: "旅遊支出" },
     { key: "players", icon: "👥", label: "玩家管理" },
@@ -94,7 +93,6 @@ function ConfigWarning() {
 }
 
 const ADMIN_ONLY_VIEWS: ReadonlyArray<ViewKey> = [
-  "addTsumo",
   "addRound",
   "players",
   "withdrawals",
@@ -149,8 +147,6 @@ function AppInner() {
         return <Dashboard onNav={onNav} />;
       case "history":
         return <History />;
-      case "addTsumo":
-        return <AddTsumo onDone={() => setView("dashboard")} />;
       case "addRound":
         return <AddRound onDone={() => setView("dashboard")} />;
       case "weeklySettlements":
