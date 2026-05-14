@@ -322,50 +322,85 @@ export function hasUnsettledPriorWeek(
   return weeks.some((w) => w.weekStart < thisMonday && !w.settled);
 }
 
-// ===== 輸家榜 =====
-export interface LoserboardEntry {
+// ===== 已結算排名榜 =====
+export interface SettledRankingEntry {
   id: Id;
   name: string;
-  netAmount: number;   // 必為負數
-  roundCount: number;  // 該玩家在 rounds 中出現的列數
-  tsumoCount: number;  // 自摸次數總和（已乘 count）
-  tsumoAmount: number; // 自摸貢獻基金的金額總和
+  winLoss: number;     // Σ rounds.amount (signed) in settled weeks
+  cut: number;         // Σ rounds.cut_amount in settled weeks (winner-only)
+  tsumoAmount: number; // Σ tsumos.amount whose date falls in a settled week
+  tsumoCount: number;  // Σ tsumos.count in settled weeks
+  net: number;         // winLoss - cut - tsumoAmount
 }
 
-export function buildLoserboard(
+export interface SettledRanking {
+  list: SettledRankingEntry[];        // sorted by net desc
+  cutoffISO: string | null;           // latest settled week's Sunday (weekStart + 6); null if none
+  settledWeekCount: number;
+}
+
+export function buildSettledRanking(
   players: Player[],
   tsumos: Tsumo[] | undefined,
   rounds: Round[] | undefined
-): LoserboardEntry[] {
-  const netByPid: Record<Id, number> = {};
-  const roundCountByPid: Record<Id, number> = {};
-  const tsumoCountByPid: Record<Id, number> = {};
-  const tsumoAmountByPid: Record<Id, number> = {};
+): SettledRanking {
+  const weeks = groupRoundsByWeek(rounds);
+  const settledWeeks = weeks.filter((w) => w.settled);
+  const settledWeekStarts = new Set(settledWeeks.map((w) => w.weekStart));
 
-  for (const r of rounds ?? []) {
-    const pid = r.player_id;
-    netByPid[pid] = (netByPid[pid] ?? 0) + (Number(r.amount) || 0);
-    roundCountByPid[pid] = (roundCountByPid[pid] ?? 0) + 1;
+  const winLossByPid: Record<Id, number> = {};
+  const cutByPid: Record<Id, number> = {};
+  const tsumoAmountByPid: Record<Id, number> = {};
+  const tsumoCountByPid: Record<Id, number> = {};
+
+  for (const w of settledWeeks) {
+    for (const g of w.rounds) {
+      for (const row of g.rows) {
+        const pid = row.player_id;
+        winLossByPid[pid] = (winLossByPid[pid] ?? 0) + (Number(row.amount) || 0);
+        cutByPid[pid] = (cutByPid[pid] ?? 0) + (Number(row.cut_amount) || 0);
+      }
+    }
   }
 
   for (const t of tsumos ?? []) {
+    const wk = weekStartISO(t.date);
+    if (!wk || !settledWeekStarts.has(wk)) continue;
     const pid = t.player_id;
-    tsumoCountByPid[pid] = (tsumoCountByPid[pid] ?? 0) + (Number(t.count) || 1);
     tsumoAmountByPid[pid] = (tsumoAmountByPid[pid] ?? 0) + (Number(t.amount) || 0);
+    tsumoCountByPid[pid] = (tsumoCountByPid[pid] ?? 0) + (Number(t.count) || 1);
   }
 
-  return players
-    .map<LoserboardEntry>((p) => ({
-      id: p.id,
-      name: p.name,
-      netAmount: netByPid[p.id] ?? 0,
-      roundCount: roundCountByPid[p.id] ?? 0,
-      tsumoCount: tsumoCountByPid[p.id] ?? 0,
-      tsumoAmount: tsumoAmountByPid[p.id] ?? 0
-    }))
-    .filter((e) => e.netAmount < 0)
-    .sort((a, b) => a.netAmount - b.netAmount)
-    .slice(0, 10);
+  const list = players
+    .map<SettledRankingEntry>((p) => {
+      const winLoss = winLossByPid[p.id] ?? 0;
+      const cut = cutByPid[p.id] ?? 0;
+      const tsumoAmount = tsumoAmountByPid[p.id] ?? 0;
+      const tsumoCount = tsumoCountByPid[p.id] ?? 0;
+      return {
+        id: p.id,
+        name: p.name,
+        winLoss,
+        cut,
+        tsumoAmount,
+        tsumoCount,
+        net: winLoss - cut - tsumoAmount
+      };
+    })
+    .filter((e) => e.winLoss !== 0 || e.cut !== 0 || e.tsumoAmount !== 0)
+    .sort((a, b) => b.net - a.net);
+
+  // latest settled week's Sunday = weekStart + 6 days, in 'YYYY-MM-DD'
+  let cutoffISO: string | null = null;
+  if (settledWeeks.length > 0) {
+    const sorted = settledWeeks
+      .map((w) => w.weekStart)
+      .sort();          // ascending lexicographic on 'YYYY-MM-DD' == chronological
+    const latest = sorted[sorted.length - 1];
+    cutoffISO = dayjs(latest).add(6, 'day').format('YYYY-MM-DD');
+  }
+
+  return { list, cutoffISO, settledWeekCount: settledWeeks.length };
 }
 
 export const sleep = (ms: number): Promise<void> =>
