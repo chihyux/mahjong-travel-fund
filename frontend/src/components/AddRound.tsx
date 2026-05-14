@@ -13,6 +13,7 @@ import type { Id, Player } from '../types';
 import Card from './ui/Card';
 import Button from './ui/Button';
 import Modal from './ui/Modal';
+import Stepper from './ui/Stepper';
 
 interface AddRoundProps {
   onDone: () => void;
@@ -55,6 +56,36 @@ export default function AddRound({ onDone }: AddRoundProps) {
   const [busy, setBusy] = useState(false);
   const [pickerFor, setPickerFor] = useState<number | null>(null);
 
+  const tsumoUnit = Number(settings.tsumo_amount) || 30;
+
+  const [tsumoCounts, setTsumoCounts] = useState<Record<Id, number>>({});
+
+  const selectedPlayerIds = useMemo(
+    () => slots.map((s) => s.player_id).filter((x): x is Id => !!x),
+    [slots]
+  );
+  const allFour = selectedPlayerIds.length === 4;
+
+  // 玩家從某 slot 被換掉 → 清除舊 player 的 tsumo count
+  const setSlotPlayer = (idx: number, newPid: Id) => {
+    setSlots((prev) => {
+      const oldPid = prev[idx]?.player_id ?? null;
+      const next = prev.map((s, i) => (i === idx ? { ...s, player_id: newPid } : s));
+      if (oldPid && oldPid !== newPid) {
+        const stillUsed = next.some((s) => s.player_id === oldPid);
+        if (!stillUsed) {
+          setTsumoCounts((tc) => {
+            if (tc[oldPid] === undefined) return tc;
+            const copy = { ...tc };
+            delete copy[oldPid];
+            return copy;
+          });
+        }
+      }
+      return next;
+    });
+  };
+
   const entries = useMemo(
     () =>
       slots.map((s) => ({
@@ -79,6 +110,17 @@ export default function AddRound({ onDone }: AddRoundProps) {
     [entries, cutRatio]
   );
 
+  const tsumoCutTotal = useMemo(
+    () =>
+      selectedPlayerIds.reduce(
+        (sum, pid) => sum + tsumoUnit * (tsumoCounts[pid] ?? 0),
+        0
+      ),
+    [selectedPlayerIds, tsumoCounts, tsumoUnit]
+  );
+
+  const fundTotal = cutTotal + tsumoCutTotal;
+
   const winners = entries.filter((e) => e.amount > 0);
   const losers = entries.filter((e) => e.amount < 0);
 
@@ -99,12 +141,16 @@ export default function AddRound({ onDone }: AddRoundProps) {
     if (!validation.ok) return;
     setBusy(true);
     try {
-      await actions.addRound({
+      const tsumosPayload = selectedPlayerIds
+        .map((pid) => ({ player_id: pid, count: tsumoCounts[pid] ?? 0 }))
+        .filter((t) => t.count > 0);
+      await actions.addRoundWithTsumos({
         date,
         entries: slots.map((s) => ({
           player_id: s.player_id as Id,
           amount: signedAmount(s)
         })),
+        tsumos: tsumosPayload,
         note
       });
       onDone();
@@ -187,6 +233,46 @@ export default function AddRound({ onDone }: AddRoundProps) {
           )}
 
           <div>
+            <label className="block text-[18px] font-medium mb-2">自摸（選填）</label>
+            <div className="text-[14px] text-ink-3 mb-3">
+              {allFour
+                ? '該局誰自摸了幾次？沒人自摸就保持 0'
+                : '請先選齊 4 位玩家'}
+            </div>
+            <div
+              aria-disabled={!allFour}
+              className={`space-y-3 ${allFour ? '' : 'opacity-50 pointer-events-none'}`}
+            >
+              {selectedPlayerIds.map((pid) => {
+                const count = tsumoCounts[pid] ?? 0;
+                return (
+                  <div key={pid} className="flex items-center gap-3">
+                    <div className="flex-1 min-w-0 text-[17px] truncate">
+                      {playerName(players, pid)}
+                    </div>
+                    <div className="w-40">
+                      <Stepper
+                        value={count}
+                        onChange={(v) =>
+                          setTsumoCounts((prev) => ({ ...prev, [pid]: v }))
+                        }
+                        min={0}
+                        max={9}
+                      />
+                    </div>
+                    <div className="w-20 text-right num text-[16px] text-ink-3">
+                      {fmtMoney(tsumoUnit * count, symbol)}
+                    </div>
+                  </div>
+                );
+              })}
+              {!allFour && (
+                <div className="text-[14px] text-ink-3">（4 人選齊後解鎖）</div>
+              )}
+            </div>
+          </div>
+
+          <div>
             <label className="block text-[18px] font-medium mb-2">備註（選填）</label>
             <input
               type="text"
@@ -241,15 +327,27 @@ export default function AddRound({ onDone }: AddRoundProps) {
               </div>
             )}
 
-            <div className="pt-2 border-t border-honey/30">
+            <div className="pt-2 border-t border-honey/30 space-y-1">
               <div className="flex items-baseline justify-between">
-                <span className="text-[16px] text-honey font-medium">入公基金</span>
-                <span className="num text-[28px] text-honey">
+                <span className="text-[15px] text-ink-2">抽成</span>
+                <span className="num text-[18px] text-honey">
                   {fmtMoney(cutTotal, symbol)}
                 </span>
               </div>
+              <div className="flex items-baseline justify-between">
+                <span className="text-[15px] text-ink-2">自摸</span>
+                <span className="num text-[18px] text-honey">
+                  {fmtMoney(tsumoCutTotal, symbol)}
+                </span>
+              </div>
+              <div className="flex items-baseline justify-between pt-2 border-t border-honey/30">
+                <span className="text-[16px] text-honey font-medium">入公基金合計</span>
+                <span className="num text-[28px] text-honey">
+                  {fmtMoney(fundTotal, symbol)}
+                </span>
+              </div>
               <div className="text-[13px] text-ink-3 mt-1">
-                自動計算贏家金額 {Math.round(cutRatio * 100)}%
+                抽成：贏家金額 {Math.round(cutRatio * 100)}%；自摸：每次 {fmtMoney(tsumoUnit, symbol)}
               </div>
             </div>
 
@@ -279,7 +377,7 @@ export default function AddRound({ onDone }: AddRoundProps) {
         players={activePlayers}
         takenIds={pickerFor !== null ? pickerTaken(pickerFor) : new Set()}
         onPick={(id) => {
-          if (pickerFor !== null) setSlot(pickerFor, { player_id: id });
+          if (pickerFor !== null) setSlotPlayer(pickerFor, id);
           setPickerFor(null);
         }}
         onClose={() => setPickerFor(null)}
