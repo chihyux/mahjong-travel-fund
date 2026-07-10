@@ -320,6 +320,9 @@ export interface SettledRankingEntry {
   tsumoAmount: number; // Σ tsumos.amount whose date falls in a settled week
   tsumoCount: number;  // Σ tsumos.count in settled weeks
   net: number;         // winLoss - cut - tsumoAmount
+  roundCount: number;          // 已結算週中參與的局數
+  winRate: number | null;      // winCount / roundCount（0–1）；0 場為 null
+  avgPerRound: number | null;  // winLoss / roundCount；0 場為 null
 }
 
 export interface SettledRanking {
@@ -341,6 +344,8 @@ export function buildSettledRanking(
   const cutByPid: Record<Id, number> = {};
   const tsumoAmountByPid: Record<Id, number> = {};
   const tsumoCountByPid: Record<Id, number> = {};
+  const roundCountByPid: Record<Id, number> = {};
+  const winCountByPid: Record<Id, number> = {};
 
   for (const w of settledWeeks) {
     for (const g of w.rounds) {
@@ -348,6 +353,10 @@ export function buildSettledRanking(
         const pid = row.player_id;
         winLossByPid[pid] = (winLossByPid[pid] ?? 0) + (Number(row.amount) || 0);
         cutByPid[pid] = (cutByPid[pid] ?? 0) + (Number(row.cut_amount) || 0);
+        roundCountByPid[pid] = (roundCountByPid[pid] ?? 0) + 1;
+        if ((Number(row.amount) || 0) > 0) {
+          winCountByPid[pid] = (winCountByPid[pid] ?? 0) + 1;
+        }
       }
     }
   }
@@ -366,6 +375,7 @@ export function buildSettledRanking(
       const cut = cutByPid[p.id] ?? 0;
       const tsumoAmount = tsumoAmountByPid[p.id] ?? 0;
       const tsumoCount = tsumoCountByPid[p.id] ?? 0;
+      const roundCount = roundCountByPid[p.id] ?? 0;
       return {
         id: p.id,
         name: p.name,
@@ -373,7 +383,10 @@ export function buildSettledRanking(
         cut,
         tsumoAmount,
         tsumoCount,
-        net: winLoss - cut - tsumoAmount
+        net: winLoss - cut - tsumoAmount,
+        roundCount,
+        winRate: roundCount > 0 ? (winCountByPid[p.id] ?? 0) / roundCount : null,
+        avgPerRound: roundCount > 0 ? winLoss / roundCount : null
       };
     })
     .filter((e) => e.winLoss !== 0 || e.cut !== 0 || e.tsumoAmount !== 0)
