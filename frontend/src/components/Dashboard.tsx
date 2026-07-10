@@ -258,6 +258,15 @@ export default function Dashboard({ onNav }: DashboardProps) {
                       ? `自摸 ${p.tsumoCount} 次 ${fmtMoney(p.tsumoAmount, symbol)}`
                       : "自摸 0";
                   const cutLabel = p.cut > 0 ? `抽成 ${fmtMoney(p.cut, symbol)}` : null;
+                  const statsLabel =
+                    p.roundCount === 0
+                      ? "已玩 0 場"
+                      : [
+                          `已玩 ${p.roundCount} 場`,
+                          `勝率 ${Math.round((p.winRate ?? 0) * 100)}%`,
+                          `平均 ${fmtSignedMoney(p.avgPerRound, symbol)}/場`,
+                          `自摸率 ${Math.round((p.tsumoCount / p.roundCount) * 100)}%`,
+                        ].join(" · ");
 
                   return (
                     <div key={p.id} className="flex items-center gap-4">
@@ -268,6 +277,7 @@ export default function Dashboard({ onNav }: DashboardProps) {
                           {winLossLabel}
                           {cutLabel ? ` · ${cutLabel}` : ""} · {tsumoLabel}
                         </div>
+                        <div className="text-[14px] text-ink-3">{statsLabel}</div>
                       </div>
                       <div
                         className={`num text-[24px] flex-shrink-0 ${
