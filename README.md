@@ -1,6 +1,6 @@
 # mahjong-travel-fund
 
-給家人一起記帳 + 累積旅遊基金的輕量 Web App。支援麻將自摸 + 每局結算兩種記帳方式，長輩友善的大字高對比 UI，資料存在 Google Sheet。
+給家人一起記帳 + 累積旅遊基金的輕量 Web App。以「每局結算」為核心記帳流程（同一張表單順手記自摸），長輩友善的大字高對比 UI，資料存在 Google Sheet。
 
 ![stack](https://img.shields.io/badge/React-18-61dafb) ![stack](https://img.shields.io/badge/Vite-5-646cff) ![stack](https://img.shields.io/badge/Tailwind-3-38bdf8) ![stack](https://img.shields.io/badge/Backend-Apps_Script-4285f4)
 
@@ -8,12 +8,12 @@
 
 小群體共同累積一筆基金（例如旅遊、聚會），記錄每次進帳與支出，畫面上看得到餘額、目標達成進度、每位成員的累積貢獻。
 
-兩種進帳流程：
+**進帳流程（每局結算）**：打完東南西北風後，在同一張表單記下 4 人輸贏（總和必為 0），並順手勾選該局誰自摸了幾次，一次送出就完成整局記錄。兩種進基金來源：
 
-- **自摸**：每局定額加一筆（預設 30 元），適合當下就記的高頻小額場景
-- **每局結算**：打完東南西北風後一次記 4 人輸贏（總和必為 0），贏家金額 × 10%（可調）自動進基金
+- **每局抽成**：贏家金額 × 10%（可調）自動進基金
+- **自摸**：每次定額（預設 30 元，可調）進基金
 
-另有「週結算」檢視：按週聚合所有局的資料，管理員可批次標記「已結算」作為核帳狀態（只改 `settled` 旗標，不動金額）。
+「週結算」檢視按週聚合所有局，管理員可批次標記「已結算」當作核帳狀態（純會計標記，不動任何金額）。首頁另有「已結算排名」，只計已結算週的資料，顯示每人淨值與場數、勝率、每局平均、自摸率等統計。
 
 支出（旅遊消費、共同支出）另有獨立分頁；所有歷史可追溯、可編修。訪客可唯讀瀏覽，寫入需管理員密碼。
 
@@ -65,6 +65,7 @@ mahjong-travel-fund/
 ## 前端實作重點
 
 - 狀態管理：自建 `useStore`（Context + `useState`），actions 封裝 API 呼叫；寫入成功後 re-fetch `getAll` 保持一致性（Sheet 為 source of truth）
+- 衍生資料：餘額、玩家貢獻、週聚合、已結算排名（淨值 / 場數 / 勝率 / 每局平均 / 自摸率）皆在前端 `lib/utils.ts` 由 `getAll` 快照即時計算，後端只存原始列
 - 路由：自管 `ViewKey` state，`Shell` 依 `isAdmin` 呈現不同導覽；訪客看到首頁 / 紀錄 / 週結算（唯讀）/ 管理員登入
 - API client：`lib/api.ts` 以 `fetch` 直打 Apps Script endpoint
   - GET：`?action=getAll`
@@ -79,6 +80,7 @@ mahjong-travel-fund/
 
 - `doGet(e)`：讀取流程，回傳 5 張分頁的完整 snapshot
 - `doPost(e)`：以 `action` 字串 dispatch，寫入類動作先驗密碼（比對 `Settings.admin_password`）
+- `addRoundWithTsumos`：一次原子寫入該局 4 列 `Rounds` 與對應 `Tsumos` 列（前端主要進帳入口）
 - 資料存取：`SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name)`；以欄位 header row 對應成 object，避免硬編欄位 index
 - 新增：`appendRow`；更新：`getDataRange().getValues()` 後找 row index 再 `setValue()`；刪除：`deleteRow`
 - ID 生成：`{prefix}_{yyyyMMddHHmmss}_{rand}`，從 ID 即可看出類型與建立時間
@@ -101,6 +103,7 @@ mahjong-travel-fund/
 
 ## 設計系統
 
+- Mobile-first：主要使用情境是牌桌邊用手機隨手記，因此以手機直式為第一優先——單欄、底部大按鈕導覽、大字大觸控區；桌機版面是往上加寬後的延伸
 - 主色 `#4A6B4A`（sage）+ `#B8781F`（honey）+ `#F3F1E9`（背景）
 - Body 18px、主數字 76px、按鈕高 64px、對比度 15:1
 - 字型：`Noto Sans TC`（含內文與數字）、`Noto Serif TC`（標題）

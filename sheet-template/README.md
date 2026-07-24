@@ -7,13 +7,15 @@
 | id  | name | active | created_at |
 | --- | ---- | ------ | ---------- |
 
-### `Tsumos` （自摸記錄，每局 +30）
+### `Tsumos` （自摸記錄）
+
+隨每局結算一併記錄：在「每局結算」表單勾選該局誰自摸幾次，送出時後端與該局 `Rounds` 列一起原子寫入（`addRoundWithTsumos`）。
 
 | id  | date | player_id | count | amount | note | created_at |
 | --- | ---- | --------- | ----- | ------ | ---- | ---------- |
 
-- `count`：幾次自摸（通常 1）
-- `amount`：自動 = 30 × count
+- `count`：該局自摸次數
+- `amount`：自動 = `Settings.tsumo_amount` × count（預設 30，可調）
 
 ### `Rounds` （每局結算記錄，一局 = 東南西北風打完）
 
