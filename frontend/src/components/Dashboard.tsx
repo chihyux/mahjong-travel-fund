@@ -269,27 +269,29 @@ export default function Dashboard({ onNav }: DashboardProps) {
                         ].join(" · ");
 
                   return (
-                    <div key={p.id} className="flex items-center gap-4">
-                      <RankBadge rank={i + 1} />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[22px] font-medium truncate">{p.name}</div>
-                        <div className="text-[15px] text-ink-3">
-                          {winLossLabel}
-                          {cutLabel ? ` · ${cutLabel}` : ""} · {tsumoLabel}
+                    <div key={p.id}>
+                      <div className="flex items-center gap-4">
+                        <RankBadge rank={i + 1} />
+                        <div className="flex-1 min-w-0 text-[22px] font-medium truncate">
+                          {p.name}
                         </div>
-                        <div className="text-[14px] text-ink-3">{statsLabel}</div>
+                        <div
+                          className={`num text-[24px] flex-shrink-0 ${
+                            p.net > 0
+                              ? "text-sage-deep"
+                              : p.net < 0
+                                ? "text-red-700"
+                                : "text-ink-3"
+                          }`}
+                        >
+                          {fmtSignedMoney(p.net, symbol)}
+                        </div>
                       </div>
-                      <div
-                        className={`num text-[24px] flex-shrink-0 ${
-                          p.net > 0
-                            ? "text-sage-deep"
-                            : p.net < 0
-                              ? "text-red-700"
-                              : "text-ink-3"
-                        }`}
-                      >
-                        {fmtSignedMoney(p.net, symbol)}
+                      <div className="mt-1.5 text-[15px] text-ink-3">
+                        {winLossLabel}
+                        {cutLabel ? ` · ${cutLabel}` : ""} · {tsumoLabel}
                       </div>
+                      <div className="text-[14px] text-ink-3">{statsLabel}</div>
                     </div>
                   );
                 })}
