@@ -19,20 +19,35 @@ export default function LedgerSelect() {
 
   return (
     <>
-      {/* 寫入還沒回來時不能切換：請求已帶著原帳本送出，切過去會看到錯的帳本與提示 */}
-      <select
-        aria-label="切換帳本"
-        value={ledgerId ?? ""}
-        disabled={writing}
-        onChange={(e) => onChange(e.target.value)}
-        className="min-h-[44px] max-w-[11rem] px-3 rounded-xl border-2 border-divider bg-white text-[16px] font-medium text-ink disabled:opacity-50"
-      >
-        {ledgers.map((l) => (
-          <option key={l.id} value={l.id}>
-            {l.name}
-          </option>
-        ))}
-      </select>
+      {/* 原生箭頭各瀏覽器大小位置不一且貼邊，改用自己畫的 */}
+      <div className={`relative ${writing ? "opacity-50" : ""}`}>
+        {/* 寫入還沒回來時不能切換：請求已帶著原帳本送出，切過去會看到錯的帳本與提示 */}
+        <select
+          aria-label="切換帳本"
+          value={ledgerId ?? ""}
+          disabled={writing}
+          onChange={(e) => onChange(e.target.value)}
+          className="appearance-none min-h-[44px] max-w-[11rem] pl-3 pr-9 rounded-xl border-2 border-divider bg-white text-[16px] font-medium text-ink truncate"
+        >
+          {ledgers.map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.name}
+            </option>
+          ))}
+        </select>
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 20 20"
+          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-3"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M5 7.5l5 5 5-5" />
+        </svg>
+      </div>
       <ConfirmDialog
         open={pending !== null}
         title="切換帳本？"
