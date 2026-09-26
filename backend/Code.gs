@@ -1,39 +1,112 @@
 /**
- * 家庭旅遊基金 — Google Apps Script 後端 v4
+ * 家庭旅遊基金：Google Apps Script 後端 v5（多帳本）
  *
  * 規則：
- * - 自摸：每局記一筆，每筆 +30 元進公基金
+ * - 可以有多本帳本（Ledgers 分頁一本一列），每本帳的局、自摸、支出、成員各自一組分頁
+ * - 自摸：每筆 + 該帳本的 tsumo_amount 進公基金
  * - 每局結算：打完東南西北風，一次記 4 位玩家的輸贏（amount 可正可負，總和 = 0）；
- *             贏家 amount × 10% 進公基金
- * - 週結算：按週批次標記 settled（不影響金額，只是會計狀態）
+ *             贏家 amount × 該帳本的 cut_ratio 進公基金
+ * - 週結算：按週批次標記 settled（不影響金額，只是會計狀態）；每本帳的結算日可不同
+ * - 玩家全部帳本共用，停用狀態各帳本分開記在 Members__L*
  *
  * 部署：
  * 1. 選單「擴充功能 → Apps Script」→ 貼入此檔
- * 2. 先執行 initSheets() 建立所有分頁與預設值（授權後）
+ * 2. 新安裝執行 initSheets()；從單一帳本版本升級則執行 migrateToLedgers()
  * 3. 部署 → 新增部署作業 → 網頁應用程式
  *    - 執行身分：我
  *    - 存取權：所有人
  * 4. 複製 Web App URL → 貼到前端 config.ts
+ * 5. 之後要開新帳本：改 createLedger() 開頭的參數再執行
  */
 
 const SHEET_PLAYERS = 'Players';
-const SHEET_TSUMOS = 'Tsumos';
-const SHEET_ROUNDS = 'Rounds';
-const SHEET_WITHDRAWALS = 'Withdrawals';
 const SHEET_SETTINGS = 'Settings';
+const SHEET_LEDGERS = 'Ledgers';
 
-// 預設規則（若 Settings 未設或不合法時的 fallback）
+// 每本帳各自一組分頁，名稱為「原名__帳本代號」，例如 Rounds__L2
+const BASE_ROUNDS = 'Rounds';
+const BASE_TSUMOS = 'Tsumos';
+const BASE_WITHDRAWALS = 'Withdrawals';
+const BASE_MEMBERS = 'Members';
+
+const HEADERS_PLAYERS = ['id', 'name', 'created_at'];
+const HEADERS_LEDGERS = [
+  'id', 'name', 'purpose', 'goal', 'goal_name',
+  'tsumo_amount', 'cut_ratio', 'settle_weekday', 'created_at'
+];
+const HEADERS_ROUNDS = [
+  'id', 'round_id', 'date', 'player_id', 'amount',
+  'cut_amount', 'settled', 'settled_at', 'note', 'created_at'
+];
+const HEADERS_TSUMOS = ['id', 'date', 'player_id', 'count', 'amount', 'note', 'created_at'];
+const HEADERS_WITHDRAWALS = ['id', 'date', 'amount', 'note', 'created_at'];
+const HEADERS_MEMBERS = ['player_id', 'active', 'created_at'];
+
+const LEDGER_SHEETS = [
+  { base: BASE_ROUNDS, headers: HEADERS_ROUNDS },
+  { base: BASE_TSUMOS, headers: HEADERS_TSUMOS },
+  { base: BASE_WITHDRAWALS, headers: HEADERS_WITHDRAWALS },
+  { base: BASE_MEMBERS, headers: HEADERS_MEMBERS }
+];
+
+// Sheet 上的結算日填中文；陣列 index 同 JavaScript Date.getDay()，0 = 週日。
+// 前端 frontend/src/lib/utils.ts 有同一份 WEEKDAY_ZH，兩邊要一起改
+const WEEKDAY_ZH = ['日', '一', '二', '三', '四', '五', '六'];
+
+// 預設規則（若帳本未設或不合法時的 fallback）
 const DEFAULT_TSUMO_AMOUNT = 30;
 const DEFAULT_CUT_RATIO = 0.10;
 
-function currentTsumoAmount() {
-  const v = Number(readSettings().tsumo_amount);
+// ===== 帳本純函式（不碰 Spreadsheet，可在 Node 以 vm 載入驗證） =====
+function ledgerSheetName(base, ledgerId) { return base + '__' + ledgerId; }
+
+// 代號不是 L 加數字時排到最後
+function ledgerNumber(ledgerId) {
+  const m = /^L(\d+)$/.exec(String(ledgerId));
+  return m ? Number(m[1]) : Infinity;
+}
+
+function nextLedgerId(ledgers) {
+  let max = 0;
+  ledgers.forEach(l => {
+    const n = ledgerNumber(l.id);
+    if (isFinite(n)) max = Math.max(max, n);
+  });
+  return 'L' + (max + 1);
+}
+
+// 空白或填錯一律當週日，等於多帳本之前固定週一到週日的分週
+function parseSettleWeekday(v) {
+  const i = WEEKDAY_ZH.indexOf(String(v === undefined || v === null ? '' : v).trim());
+  return i >= 0 ? i : 0;
+}
+
+function ledgerTsumoAmount(ledger) {
+  const v = Number(ledger.tsumo_amount);
   return isFinite(v) && v > 0 ? v : DEFAULT_TSUMO_AMOUNT;
 }
 
-function currentCutRatio() {
-  const v = Number(readSettings().cut_ratio);
+function ledgerCutRatio(ledger) {
+  const v = Number(ledger.cut_ratio);
   return isFinite(v) && v > 0 && v < 1 ? v : DEFAULT_CUT_RATIO;
+}
+
+// 玩家名稱與帳本名稱都要全域唯一；exceptId 用於改名時排除自己
+function findNameConflict(rows, name, exceptId) {
+  const target = String(name).trim();
+  return rows.some(r =>
+    String(r.name).trim() === target && String(r.id) !== String(exceptId || '')
+  );
+}
+
+function validateNewLedger(ledgers, input) {
+  const name = String(input.name || '').trim();
+  if (!name) return '帳本名稱不可空白';
+  if (findNameConflict(ledgers, name, '')) return '已有同名的帳本';
+  if (WEEKDAY_ZH.indexOf(String(input.settle_weekday || '').trim()) < 0) {
+    return 'settle_weekday 需為 一、二、三、四、五、六、日 其中一個字';
+  }
+  return '';
 }
 
 // ===== 工具 =====
@@ -85,34 +158,53 @@ function appendRow(name, obj) {
   sheet.appendRow(row);
 }
 
-function findRowIndexById(name, id) {
+function findRowIndexBy(name, key, value) {
   const sheet = ss().getSheetByName(name);
   const values = sheet.getDataRange().getValues();
-  const headers = values[0];
-  const idCol = headers.indexOf('id');
-  if (idCol < 0) throw new Error('id column missing in ' + name);
+  const col = values[0].indexOf(key);
+  if (col < 0) throw new Error(key + ' column missing in ' + name);
   for (let i = 1; i < values.length; i++) {
-    if (String(values[i][idCol]) === String(id)) return i + 1;
+    if (String(values[i][col]) === String(value)) return i + 1;
   }
   return -1;
 }
 
-function updateRowById(name, id, patch) {
+function findRowIndexById(name, id) { return findRowIndexBy(name, 'id', id); }
+
+function updateRowBy(name, key, value, patch) {
   const sheet = ss().getSheetByName(name);
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  const rowIndex = findRowIndexById(name, id);
-  if (rowIndex < 0) throw new Error('Row not found: ' + id);
-  for (const key in patch) {
-    const col = headers.indexOf(key);
-    if (col >= 0) sheet.getRange(rowIndex, col + 1).setValue(patch[key]);
+  const rowIndex = findRowIndexBy(name, key, value);
+  if (rowIndex < 0) throw new Error('Row not found: ' + value);
+  for (const k in patch) {
+    const col = headers.indexOf(k);
+    if (col >= 0) sheet.getRange(rowIndex, col + 1).setValue(patch[k]);
   }
 }
+
+function updateRowById(name, id, patch) { updateRowBy(name, 'id', id, patch); }
 
 function deleteRowById(name, id) {
   const sheet = ss().getSheetByName(name);
   const rowIndex = findRowIndexById(name, id);
   if (rowIndex < 0) throw new Error('Row not found: ' + id);
   sheet.deleteRow(rowIndex);
+}
+
+function ensureSheet(name, headers) {
+  const spreadsheet = ss();
+  let sheet = spreadsheet.getSheetByName(name);
+  if (!sheet) sheet = spreadsheet.insertSheet(name);
+  if (sheet.getLastRow() === 0) {
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.setFrozenRows(1);
+    sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+  }
+  return sheet;
+}
+
+function createLedgerSheets(ledgerId) {
+  LEDGER_SHEETS.forEach(s => ensureSheet(ledgerSheetName(s.base, ledgerId), s.headers));
 }
 
 function readSettings() {
@@ -122,16 +214,24 @@ function readSettings() {
   return map;
 }
 
-function setSetting(key, value) {
-  const sheet = ss().getSheetByName(SHEET_SETTINGS);
-  const values = sheet.getDataRange().getValues();
-  for (let i = 1; i < values.length; i++) {
-    if (String(values[i][0]) === String(key)) {
-      sheet.getRange(i + 1, 2).setValue(value);
-      return;
-    }
-  }
-  sheet.appendRow([key, value]);
+function readLedgers() { return readSheet(SHEET_LEDGERS); }
+
+// 缺任何一個分頁的帳本（例如手動在 Ledgers 分頁加列）視為不存在，讀寫都略過
+function ledgerSheetsPresent(ledgerId) {
+  const id = String(ledgerId || '');
+  if (!id) return false;
+  const spreadsheet = ss();
+  return LEDGER_SHEETS.every(s => spreadsheet.getSheetByName(ledgerSheetName(s.base, id)));
+}
+
+function getLedger(ledgerId) {
+  const id = String(ledgerId || '');
+  if (!ledgerSheetsPresent(id)) return null;
+  return readLedgers().filter(l => String(l.id) === id)[0] || null;
+}
+
+function readMemberIds(ledgerId) {
+  return new Set(readSheet(ledgerSheetName(BASE_MEMBERS, ledgerId)).map(m => String(m.player_id)));
 }
 
 function verifyAdmin(password) {
@@ -158,6 +258,12 @@ function addDaysStr(ymd, days) {
   return Utilities.formatDate(dt, 'UTC', 'yyyy-MM-dd');
 }
 
+// 'YYYY-MM-DD' 是星期幾（0 = 週日）；同 addDaysStr 用 UTC 避免 script timezone 影響
+function weekdayOfDateStr(ymd) {
+  const parts = String(ymd).split('-');
+  return new Date(Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]))).getUTCDay();
+}
+
 // ===== 路由 =====
 function doGet(e) {
   try {
@@ -179,32 +285,41 @@ function doPost(e) {
     if (action === 'login') return handleLogin(body);
 
     const writeActions = [
-      'addPlayer', 'updatePlayer', 'deletePlayer',
-      'addTsumo', 'updateTsumo', 'deleteTsumo',
-      'addRound', 'addRoundWithTsumos', 'updateRound', 'deleteRound', 'markWeekSettled',
+      'addPlayer', 'updatePlayer', 'addMembers', 'setMemberActive',
+      'deleteTsumo',
+      'addRoundWithTsumos', 'deleteRound', 'markWeekSettled',
       'addWithdrawal', 'deleteWithdrawal',
-      'updateSettings'
+      'updateLedger'
     ];
-    if (writeActions.indexOf(action) >= 0 && !verifyAdmin(body.password)) {
-      return errOut('Unauthorized', 'UNAUTHORIZED');
-    }
+    if (writeActions.indexOf(action) < 0) return errOut('Unknown action: ' + action);
+    if (!verifyAdmin(body.password)) return errOut('Unauthorized', 'UNAUTHORIZED');
 
-    switch (action) {
-      case 'addPlayer': return handleAddPlayer(body);
-      case 'updatePlayer': return handleUpdatePlayer(body);
-      case 'deletePlayer': return handleDeletePlayer(body);
-      case 'addTsumo': return handleAddTsumo(body);
-      case 'updateTsumo': return handleUpdateTsumo(body);
-      case 'deleteTsumo': return handleDeleteTsumo(body);
-      case 'addRound': return handleAddRound(body);
-      case 'addRoundWithTsumos': return handleAddRoundWithTsumos(body);
-      case 'updateRound': return handleUpdateRound(body);
-      case 'deleteRound': return handleDeleteRound(body);
-      case 'markWeekSettled': return handleMarkWeekSettled(body);
-      case 'addWithdrawal': return handleAddWithdrawal(body);
-      case 'deleteWithdrawal': return handleDeleteWithdrawal(body);
-      case 'updateSettings': return handleUpdateSettings(body);
-      default: return errOut('Unknown action: ' + action);
+    // 玩家名稱、成員列的唯一性是先查再寫，兩台裝置同時寫入會兩邊都通過檢查
+    const lock = LockService.getScriptLock();
+    try {
+      lock.waitLock(10000);
+    } catch (err) {
+      return errOut('系統忙碌中，請稍後再試');
+    }
+    try {
+      switch (action) {
+        case 'addPlayer': return handleAddPlayer(body);
+        case 'updatePlayer': return handleUpdatePlayer(body);
+        case 'addMembers': return handleAddMembers(body);
+        case 'setMemberActive': return handleSetMemberActive(body);
+        case 'deleteTsumo': return handleDeleteTsumo(body);
+        case 'addRoundWithTsumos': return handleAddRoundWithTsumos(body);
+        case 'deleteRound': return handleDeleteRound(body);
+        case 'markWeekSettled': return handleMarkWeekSettled(body);
+        case 'addWithdrawal': return handleAddWithdrawal(body);
+        case 'deleteWithdrawal': return handleDeleteWithdrawal(body);
+        case 'updateLedger': return handleUpdateLedger(body);
+        default: return errOut('Unknown action: ' + action);
+      }
+    } finally {
+      // 放鎖前先把寫入提交，否則下一個拿到鎖的請求可能還讀不到這次寫的列
+      SpreadsheetApp.flush();
+      lock.releaseLock();
     }
   } catch (err) {
     return errOut(err.message);
@@ -213,13 +328,35 @@ function doPost(e) {
 
 // ===== Handlers =====
 function handleGetAll() {
-  const players = readSheet(SHEET_PLAYERS);
-  const tsumos = readSheet(SHEET_TSUMOS);
-  const rounds = readSheet(SHEET_ROUNDS);
-  const withdrawals = readSheet(SHEET_WITHDRAWALS);
   const settings = readSettings();
   delete settings.admin_password;
-  return okOut({ players, tsumos, rounds, withdrawals, settings });
+  const rows = readLedgers();
+  // 一本帳壞掉不拖垮其他帳本；但全部都壞時要報錯，否則畫面看起來像資料被清空
+  const valid = rows.filter(l => ledgerSheetsPresent(l.id));
+  if (rows.length > 0 && valid.length === 0) {
+    throw new Error('帳本分頁不完整：' + rows.map(l => String(l.id)).join(', '));
+  }
+  const ledgers = valid
+    .map(l => {
+      const id = String(l.id);
+      return {
+        id: id,
+        name: String(l.name || ''),
+        purpose: String(l.purpose || ''),
+        goal: l.goal,
+        goal_name: String(l.goal_name || ''),
+        tsumo_amount: ledgerTsumoAmount(l),
+        cut_ratio: ledgerCutRatio(l),
+        settle_weekday: parseSettleWeekday(l.settle_weekday),
+        created_at: l.created_at,
+        members: readSheet(ledgerSheetName(BASE_MEMBERS, id)),
+        rounds: readSheet(ledgerSheetName(BASE_ROUNDS, id)),
+        tsumos: readSheet(ledgerSheetName(BASE_TSUMOS, id)),
+        withdrawals: readSheet(ledgerSheetName(BASE_WITHDRAWALS, id))
+      };
+    })
+    .sort((a, b) => ledgerNumber(a.id) - ledgerNumber(b.id));
+  return okOut({ settings: settings, players: readSheet(SHEET_PLAYERS), ledgers: ledgers });
 }
 
 function handleLogin(body) {
@@ -227,125 +364,84 @@ function handleLogin(body) {
   return errOut('密碼錯誤', 'INVALID_PASSWORD');
 }
 
+// ---- 玩家與成員 ----
 function handleAddPlayer(body) {
-  if (!body.name || String(body.name).trim() === '') return errOut('名字不可空白');
-  const player = {
-    id: newId('p'),
-    name: String(body.name).trim(),
-    active: true,
-    created_at: nowIso()
-  };
+  const ledger = getLedger(body.ledger_id);
+  if (!ledger) return errOut('帳本不存在');
+  const name = String(body.name || '').trim();
+  if (!name) return errOut('名字不可空白');
+  const sameName = readSheet(SHEET_PLAYERS).filter(p => findNameConflict([p], name, ''))[0];
+  if (sameName) {
+    return errOut(readMemberIds(ledger.id).has(String(sameName.id))
+      ? '這本帳已有這位玩家'
+      : '已有這位玩家，請改用拉入');
+  }
+  const now = nowIso();
+  const player = { id: newId('p'), name: name, created_at: now };
   appendRow(SHEET_PLAYERS, player);
+  appendRow(ledgerSheetName(BASE_MEMBERS, ledger.id), {
+    player_id: player.id,
+    active: true,
+    created_at: now
+  });
   return okOut(player);
 }
 
+// 改名全域生效，所有帳本一起變
 function handleUpdatePlayer(body) {
   if (!body.id) return errOut('Missing id');
-  const patch = {};
-  if (body.name !== undefined) patch.name = String(body.name).trim();
-  if (body.active !== undefined) patch.active = !!body.active;
-  updateRowById(SHEET_PLAYERS, body.id, patch);
+  const name = String(body.name || '').trim();
+  if (!name) return errOut('名字不可空白');
+  if (findNameConflict(readSheet(SHEET_PLAYERS), name, body.id)) return errOut('已有同名的玩家');
+  updateRowById(SHEET_PLAYERS, body.id, { name: name });
   return okOut({ id: body.id });
 }
 
-function handleDeletePlayer(body) {
-  if (!body.id) return errOut('Missing id');
-  deleteRowById(SHEET_PLAYERS, body.id);
-  return okOut({ id: body.id });
+// 整批驗證通過才寫入，避免拉到一半
+function handleAddMembers(body) {
+  const ledger = getLedger(body.ledger_id);
+  if (!ledger) return errOut('帳本不存在');
+  const ids = Array.isArray(body.player_ids) ? body.player_ids.map(String) : [];
+  if (ids.length === 0) return errOut('請選擇玩家');
+  if (new Set(ids).size !== ids.length) return errOut('玩家不可重複');
+
+  const playerIds = new Set(readSheet(SHEET_PLAYERS).map(p => String(p.id)));
+  const memberIds = readMemberIds(ledger.id);
+  for (const id of ids) {
+    if (!playerIds.has(id)) return errOut('玩家不存在');
+    if (memberIds.has(id)) return errOut('玩家已在這本帳');
+  }
+
+  const sheetName = ledgerSheetName(BASE_MEMBERS, ledger.id);
+  const now = nowIso();
+  ids.forEach(id => appendRow(sheetName, { player_id: id, active: true, created_at: now }));
+  return okOut({ added: ids.length });
+}
+
+function handleSetMemberActive(body) {
+  const ledger = getLedger(body.ledger_id);
+  if (!ledger) return errOut('帳本不存在');
+  if (!body.player_id) return errOut('Missing player');
+  const sheetName = ledgerSheetName(BASE_MEMBERS, ledger.id);
+  if (findRowIndexBy(sheetName, 'player_id', body.player_id) < 0) return errOut('玩家不在這本帳');
+  const active = !!body.active;
+  updateRowBy(sheetName, 'player_id', body.player_id, { active: active });
+  return okOut({ player_id: body.player_id, active: active });
 }
 
 // ---- 自摸 ----
-function handleAddTsumo(body) {
-  if (!body.date) return errOut('Missing date');
-  if (!body.player_id) return errOut('Missing player');
-  const count = Math.max(1, Number(body.count) || 1);
-  const unit = currentTsumoAmount();
-  const tsumo = {
-    id: newId('t'),
-    date: String(body.date),
-    player_id: String(body.player_id),
-    count: count,
-    amount: unit * count,
-    note: String(body.note || ''),
-    created_at: nowIso()
-  };
-  appendRow(SHEET_TSUMOS, tsumo);
-  return okOut(tsumo);
-}
-
-function handleUpdateTsumo(body) {
-  if (!body.id) return errOut('Missing id');
-  const patch = {};
-  if (body.date !== undefined) patch.date = String(body.date);
-  if (body.player_id !== undefined) patch.player_id = String(body.player_id);
-  if (body.count !== undefined) {
-    const count = Math.max(1, Number(body.count) || 1);
-    patch.count = count;
-    patch.amount = currentTsumoAmount() * count;
-  }
-  if (body.note !== undefined) patch.note = String(body.note);
-  updateRowById(SHEET_TSUMOS, body.id, patch);
-  return okOut({ id: body.id });
-}
-
 function handleDeleteTsumo(body) {
+  const ledger = getLedger(body.ledger_id);
+  if (!ledger) return errOut('帳本不存在');
   if (!body.id) return errOut('Missing id');
-  deleteRowById(SHEET_TSUMOS, body.id);
+  deleteRowById(ledgerSheetName(BASE_TSUMOS, ledger.id), body.id);
   return okOut({ id: body.id });
-}
-
-// ---- 每局結算（Rounds） ----
-function handleAddRound(body) {
-  if (!body.date) return errOut('Missing date');
-  const entries = body.entries;
-  if (!Array.isArray(entries) || entries.length !== 4) {
-    return errOut('需要 4 位玩家');
-  }
-
-  const ids = entries.map(e => String((e && e.player_id) || ''));
-  if (ids.some(id => !id)) return errOut('玩家未選齊');
-  if (new Set(ids).size !== 4) return errOut('玩家不可重複');
-
-  // 驗證 amount 為整數、總和 = 0
-  let sum = 0;
-  const normalized = entries.map(e => {
-    const amt = Number(e.amount);
-    if (!Number.isFinite(amt) || !Number.isInteger(amt)) {
-      throw new Error('amount 需為整數');
-    }
-    sum += amt;
-    return { player_id: String(e.player_id), amount: amt };
-  });
-  if (sum !== 0) return errOut('輸贏總和需為 0');
-  if (normalized.every(e => e.amount === 0)) return errOut('金額全為 0');
-
-  const roundId = newId('rnd');
-  const date = String(body.date);
-  const note = String(body.note || '');
-  const now = nowIso();
-  const cutRatio = currentCutRatio();
-
-  normalized.forEach(e => {
-    const cut = e.amount > 0 ? Math.round(e.amount * cutRatio) : 0;
-    appendRow(SHEET_ROUNDS, {
-      id: newId('r'),
-      round_id: roundId,
-      date: date,
-      player_id: e.player_id,
-      amount: e.amount,
-      cut_amount: cut,
-      settled: false,
-      settled_at: '',
-      note: note,
-      created_at: now
-    });
-  });
-
-  return okOut({ round_id: roundId });
 }
 
 // ---- 每局結算 + 自摸（合併入口） ----
 function handleAddRoundWithTsumos(body) {
+  const ledger = getLedger(body.ledger_id);
+  if (!ledger) return errOut('帳本不存在');
   if (!body.date) return errOut('Missing date');
   const entries = body.entries;
   if (!Array.isArray(entries) || entries.length !== 4) {
@@ -355,6 +451,8 @@ function handleAddRoundWithTsumos(body) {
   const playerIds = entries.map(e => String((e && e.player_id) || ''));
   if (playerIds.some(id => !id)) return errOut('玩家未選齊');
   if (new Set(playerIds).size !== 4) return errOut('玩家不可重複');
+  const memberIds = readMemberIds(ledger.id);
+  if (playerIds.some(id => !memberIds.has(id))) return errOut('玩家不在這本帳');
 
   let sum = 0;
   const normalizedEntries = entries.map(e => {
@@ -389,12 +487,14 @@ function handleAddRoundWithTsumos(body) {
   const date = String(body.date);
   const note = String(body.note || '');
   const now = nowIso();
-  const cutRatio = currentCutRatio();
-  const tsumoUnit = currentTsumoAmount();
+  const cutRatio = ledgerCutRatio(ledger);
+  const tsumoUnit = ledgerTsumoAmount(ledger);
+  const roundsSheet = ledgerSheetName(BASE_ROUNDS, ledger.id);
+  const tsumosSheet = ledgerSheetName(BASE_TSUMOS, ledger.id);
 
   normalizedEntries.forEach(e => {
     const cut = e.amount > 0 ? Math.round(e.amount * cutRatio) : 0;
-    appendRow(SHEET_ROUNDS, {
+    appendRow(roundsSheet, {
       id: newId('r'),
       round_id: roundId,
       date: date,
@@ -411,7 +511,7 @@ function handleAddRoundWithTsumos(body) {
   const tsumoIds = [];
   normalizedTsumos.forEach(t => {
     const tid = newId('t');
-    appendRow(SHEET_TSUMOS, {
+    appendRow(tsumosSheet, {
       id: tid,
       date: date,
       player_id: t.player_id,
@@ -426,101 +526,16 @@ function handleAddRoundWithTsumos(body) {
   return okOut({ round_id: roundId, tsumo_ids: tsumoIds });
 }
 
-// 更新一局。支援：
-//   1) 只改 date / note：對該 round_id 的 4 列做欄位 in-place 修改
-//   2) 提供 entries（4 筆、sum=0、不重複）：整組替換（保留原 round_id / settled / settled_at / created_at）
-function handleUpdateRound(body) {
-  if (!body.round_id) return errOut('Missing round_id');
-  const sheet = ss().getSheetByName(SHEET_ROUNDS);
-  const values = sheet.getDataRange().getValues();
-  const headers = values[0];
-  const roundIdCol = headers.indexOf('round_id');
-  if (roundIdCol < 0) throw new Error('round_id column missing in ' + SHEET_ROUNDS);
-  const dateCol = headers.indexOf('date');
-  const noteCol = headers.indexOf('note');
-  const settledCol = headers.indexOf('settled');
-  const settledAtCol = headers.indexOf('settled_at');
-  const createdAtCol = headers.indexOf('created_at');
-
-  // 收集現有列（sheet 1-based row index）與第一列作為 metadata 來源
-  const existingSheetRows = [];
-  let firstRow = null;
-  for (let i = 1; i < values.length; i++) {
-    if (String(values[i][roundIdCol]) === String(body.round_id)) {
-      existingSheetRows.push(i + 1);
-      if (firstRow === null) firstRow = values[i];
-    }
-  }
-  if (existingSheetRows.length === 0) return errOut('Round not found');
-
-  // Case 1：替換 entries
-  if (body.entries !== undefined) {
-    const entries = body.entries;
-    if (!Array.isArray(entries) || entries.length !== 4) return errOut('需要 4 位玩家');
-    const ids = entries.map(e => String((e && e.player_id) || ''));
-    if (ids.some(id => !id)) return errOut('玩家未選齊');
-    if (new Set(ids).size !== 4) return errOut('玩家不可重複');
-
-    let sum = 0;
-    const normalized = entries.map(e => {
-      const amt = Number(e.amount);
-      if (!Number.isFinite(amt) || !Number.isInteger(amt)) {
-        throw new Error('amount 需為整數');
-      }
-      sum += amt;
-      return { player_id: String(e.player_id), amount: amt };
-    });
-    if (sum !== 0) return errOut('輸贏總和需為 0');
-    if (normalized.every(e => e.amount === 0)) return errOut('金額全為 0');
-
-    const date = body.date !== undefined ? String(body.date) : asDateStr(firstRow[dateCol]);
-    const note = body.note !== undefined ? String(body.note) : String(firstRow[noteCol] || '');
-    const settled = firstRow[settledCol];
-    const settledAt = firstRow[settledAtCol];
-    const createdAt = firstRow[createdAtCol] || nowIso();
-    const cutRatio = currentCutRatio();
-
-    // 從下往上刪舊列，再 append 新列
-    for (let i = existingSheetRows.length - 1; i >= 0; i--) {
-      sheet.deleteRow(existingSheetRows[i]);
-    }
-    normalized.forEach(e => {
-      const cut = e.amount > 0 ? Math.round(e.amount * cutRatio) : 0;
-      appendRow(SHEET_ROUNDS, {
-        id: newId('r'),
-        round_id: body.round_id,
-        date: date,
-        player_id: e.player_id,
-        amount: e.amount,
-        cut_amount: cut,
-        settled: settled,
-        settled_at: settledAt,
-        note: note,
-        created_at: createdAt
-      });
-    });
-    return okOut({ round_id: body.round_id, replaced: 4 });
-  }
-
-  // Case 2：只改 date / note
-  const newDate = body.date !== undefined ? String(body.date) : null;
-  const newNote = body.note !== undefined ? String(body.note) : null;
-  if (newDate === null && newNote === null) return errOut('Nothing to update');
-
-  existingSheetRows.forEach(rowIndex => {
-    if (newDate !== null && dateCol >= 0) sheet.getRange(rowIndex, dateCol + 1).setValue(newDate);
-    if (newNote !== null && noteCol >= 0) sheet.getRange(rowIndex, noteCol + 1).setValue(newNote);
-  });
-  return okOut({ round_id: body.round_id, updated: existingSheetRows.length });
-}
-
 function handleDeleteRound(body) {
+  const ledger = getLedger(body.ledger_id);
+  if (!ledger) return errOut('帳本不存在');
   if (!body.round_id) return errOut('Missing round_id');
-  const sheet = ss().getSheetByName(SHEET_ROUNDS);
+  const sheetName = ledgerSheetName(BASE_ROUNDS, ledger.id);
+  const sheet = ss().getSheetByName(sheetName);
   const values = sheet.getDataRange().getValues();
   const headers = values[0];
   const col = headers.indexOf('round_id');
-  if (col < 0) throw new Error('round_id column missing in ' + SHEET_ROUNDS);
+  if (col < 0) throw new Error('round_id column missing in ' + sheetName);
 
   // 從下往上刪，避免 index 位移
   let deleted = 0;
@@ -535,14 +550,20 @@ function handleDeleteRound(body) {
 }
 
 function handleMarkWeekSettled(body) {
+  const ledger = getLedger(body.ledger_id);
+  if (!ledger) return errOut('帳本不存在');
   if (!body.week_start) return errOut('Missing week_start');
-  const weekStart = String(body.week_start); // 'YYYY-MM-DD'，前端保證是週一
+  const weekStart = String(body.week_start); // 'YYYY-MM-DD'，前端依該帳本的結算日算出週期第一天
   const settled = !!body.settled;
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) return errOut('week_start 格式錯誤');
+  // 頁面開著時有人改了結算日，舊頁面送來的起始日會標到橫跨兩個新週期的 7 天
+  if (weekdayOfDateStr(weekStart) !== (parseSettleWeekday(ledger.settle_weekday) + 1) % 7) {
+    return errOut('週期起始日與帳本結算日不符，請重新整理');
+  }
   const endStr = addDaysStr(weekStart, 7);
 
-  const sheet = ss().getSheetByName(SHEET_ROUNDS);
+  const sheet = ss().getSheetByName(ledgerSheetName(BASE_ROUNDS, ledger.id));
   const range = sheet.getDataRange();
   const values = range.getValues();
   if (values.length < 2) return okOut({ changed: 0 });
@@ -572,6 +593,8 @@ function handleMarkWeekSettled(body) {
 
 // ---- 提領 ----
 function handleAddWithdrawal(body) {
+  const ledger = getLedger(body.ledger_id);
+  if (!ledger) return errOut('帳本不存在');
   if (!body.date) return errOut('Missing date');
   if (body.amount === undefined || body.amount === null) return errOut('Missing amount');
   const amount = Number(body.amount);
@@ -583,61 +606,144 @@ function handleAddWithdrawal(body) {
     note: String(body.note || ''),
     created_at: nowIso()
   };
-  appendRow(SHEET_WITHDRAWALS, w);
+  appendRow(ledgerSheetName(BASE_WITHDRAWALS, ledger.id), w);
   return okOut(w);
 }
 
 function handleDeleteWithdrawal(body) {
+  const ledger = getLedger(body.ledger_id);
+  if (!ledger) return errOut('帳本不存在');
   if (!body.id) return errOut('Missing id');
-  deleteRowById(SHEET_WITHDRAWALS, body.id);
+  deleteRowById(ledgerSheetName(BASE_WITHDRAWALS, ledger.id), body.id);
   return okOut({ id: body.id });
 }
 
-function handleUpdateSettings(body) {
-  if (!body.settings || typeof body.settings !== 'object') return errOut('Missing settings');
-  if (body.settings.admin_password !== undefined) {
-    const newPw = String(body.settings.admin_password).trim();
-    if (newPw.length < 4) return errOut('密碼至少 4 個字元');
-    setSetting('admin_password', newPw);
-    delete body.settings.admin_password;
+// ---- 帳本設定 ----
+// App 只能改名稱與目標；tsumo_amount、cut_ratio、purpose、settle_weekday 只能直接改 Ledgers 分頁
+function handleUpdateLedger(body) {
+  const ledger = getLedger(body.ledger_id);
+  if (!ledger) return errOut('帳本不存在');
+  const patch = {};
+  if (body.name !== undefined) {
+    const name = String(body.name).trim();
+    if (!name) return errOut('帳本名稱不可空白');
+    if (findNameConflict(readLedgers(), name, ledger.id)) return errOut('已有同名的帳本');
+    patch.name = name;
   }
-  for (const key in body.settings) {
-    setSetting(key, body.settings[key]);
-  }
-  return okOut({ updated: true });
+  if (body.goal !== undefined) patch.goal = Number(body.goal) || 0;
+  if (body.goal_name !== undefined) patch.goal_name = String(body.goal_name);
+  if (Object.keys(patch).length === 0) return errOut('Nothing to update');
+  updateRowById(SHEET_LEDGERS, ledger.id, patch);
+  return okOut({ id: ledger.id });
 }
 
-// ===== 一鍵初始化 =====
-function initSheets() {
-  const spreadsheet = ss();
-
-  const ensure = (name, headers) => {
-    let sheet = spreadsheet.getSheetByName(name);
-    if (!sheet) sheet = spreadsheet.insertSheet(name);
-    if (sheet.getLastRow() === 0) {
-      sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-      sheet.setFrozenRows(1);
-      sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
-    }
-    return sheet;
-  };
-
-  ensure(SHEET_PLAYERS, ['id', 'name', 'active', 'created_at']);
-  ensure(SHEET_TSUMOS, ['id', 'date', 'player_id', 'count', 'amount', 'note', 'created_at']);
-  ensure(SHEET_ROUNDS, [
-    'id', 'round_id', 'date', 'player_id', 'amount',
-    'cut_amount', 'settled', 'settled_at', 'note', 'created_at'
-  ]);
-  ensure(SHEET_WITHDRAWALS, ['id', 'date', 'amount', 'note', 'created_at']);
-  const settingsSheet = ensure(SHEET_SETTINGS, ['key', 'value']);
-
-  const defaults = {
-    admin_password: '1234',
+// ===== 建立帳本（在 Apps Script 編輯器執行） =====
+// 改好下面 input 的值，再選 createLedger 按「執行」。settle_weekday 是結算日，填 一 到 日 其中一個字。
+function createLedger() {
+  const input = {
+    name: '聚餐基金',
+    purpose: '聚餐',
     tsumo_amount: 30,
     cut_ratio: 0.1,
-    goal: 10000,
-    goal_name: '下一次旅遊 2027.04',
-    group_name: '家庭旅遊基金',
+    settle_weekday: '日'
+  };
+
+  const ui = SpreadsheetApp.getUi();
+  const ledgers = readLedgers();
+  const error = validateNewLedger(ledgers, input);
+  if (error) {
+    ui.alert(error);
+    return;
+  }
+
+  // 先建分頁再寫 Ledgers：中途失敗時 getAll 不會讀到缺分頁的帳本
+  const id = nextLedgerId(ledgers);
+  createLedgerSheets(id);
+  appendRow(SHEET_LEDGERS, {
+    id: id,
+    name: String(input.name).trim(),
+    purpose: String(input.purpose || '').trim(),
+    goal: 0,
+    goal_name: '',
+    tsumo_amount: input.tsumo_amount,
+    cut_ratio: input.cut_ratio,
+    settle_weekday: String(input.settle_weekday).trim(),
+    created_at: nowIso()
+  });
+  ui.alert('已建立帳本 ' + id + '：' + String(input.name).trim());
+}
+
+// ===== 從單一帳本版本升級（一次性） =====
+// 執行前先用「檔案 → 建立副本」備份；Apps Script 沒有交易，中途失敗要用版本紀錄還原
+function migrateToLedgers() {
+  const spreadsheet = ss();
+  const ui = SpreadsheetApp.getUi();
+  if (spreadsheet.getSheetByName(SHEET_LEDGERS)) {
+    ui.alert('已經 migrate 過，不再執行。');
+    return;
+  }
+  const oldSheets = [BASE_ROUNDS, BASE_TSUMOS, BASE_WITHDRAWALS, SHEET_PLAYERS, SHEET_SETTINGS];
+  const missing = oldSheets.filter(name => !spreadsheet.getSheetByName(name));
+  if (missing.length > 0) {
+    ui.alert('找不到分頁：' + missing.join(', ') + '，已中止。');
+    return;
+  }
+
+  const old = readSettings();
+  const players = readSheet(SHEET_PLAYERS);
+
+  [BASE_ROUNDS, BASE_TSUMOS, BASE_WITHDRAWALS].forEach(base => {
+    spreadsheet.getSheetByName(base).setName(ledgerSheetName(base, 'L1'));
+  });
+
+  const membersSheet = ensureSheet(ledgerSheetName(BASE_MEMBERS, 'L1'), HEADERS_MEMBERS);
+  if (players.length > 0) {
+    membersSheet
+      .getRange(2, 1, players.length, HEADERS_MEMBERS.length)
+      .setValues(players.map(p => [p.id, p.active, p.created_at]));
+  }
+
+  const playersSheet = spreadsheet.getSheetByName(SHEET_PLAYERS);
+  const playerHeaders = playersSheet.getRange(1, 1, 1, playersSheet.getLastColumn()).getValues()[0];
+  const activeCol = playerHeaders.indexOf('active');
+  if (activeCol >= 0) playersSheet.deleteColumn(activeCol + 1);
+
+  ensureSheet(SHEET_LEDGERS, HEADERS_LEDGERS);
+  appendRow(SHEET_LEDGERS, {
+    id: 'L1',
+    name: old.group_name || '家庭旅遊基金',
+    purpose: '旅遊',
+    goal: old.goal,
+    goal_name: old.goal_name,
+    tsumo_amount: old.tsumo_amount,
+    cut_ratio: old.cut_ratio,
+    settle_weekday: '日',
+    created_at: nowIso()
+  });
+
+  const movedKeys = ['group_name', 'goal', 'goal_name', 'tsumo_amount', 'cut_ratio'];
+  const settingsSheet = spreadsheet.getSheetByName(SHEET_SETTINGS);
+  const settingValues = settingsSheet.getDataRange().getValues();
+  for (let i = settingValues.length - 1; i >= 1; i--) {
+    if (movedKeys.indexOf(String(settingValues[i][0])) >= 0) settingsSheet.deleteRow(i + 1);
+  }
+
+  ui.alert('Migration 完成：原本的資料已成為帳本 L1。');
+}
+
+// ===== 一鍵初始化（新安裝） =====
+function initSheets() {
+  const spreadsheet = ss();
+  const ui = SpreadsheetApp.getUi();
+  if (spreadsheet.getSheetByName(BASE_ROUNDS) && !spreadsheet.getSheetByName(SHEET_LEDGERS)) {
+    ui.alert('偵測到舊的分頁結構，請改跑 migrateToLedgers()。');
+    return;
+  }
+
+  ensureSheet(SHEET_PLAYERS, HEADERS_PLAYERS);
+  const settingsSheet = ensureSheet(SHEET_SETTINGS, ['key', 'value']);
+  const defaults = {
+    admin_password: '1234',
     currency_symbol: '$'
   };
   const existing = readSettings();
@@ -647,5 +753,21 @@ function initSheets() {
     }
   }
 
-  SpreadsheetApp.getUi().alert('初始化完成！請到 Settings 分頁修改預設密碼 (admin_password)。');
+  createLedgerSheets('L1');
+  ensureSheet(SHEET_LEDGERS, HEADERS_LEDGERS);
+  if (!getLedger('L1')) {
+    appendRow(SHEET_LEDGERS, {
+      id: 'L1',
+      name: '家庭旅遊基金',
+      purpose: '旅遊',
+      goal: 10000,
+      goal_name: '下一次旅遊 2027.04',
+      tsumo_amount: DEFAULT_TSUMO_AMOUNT,
+      cut_ratio: DEFAULT_CUT_RATIO,
+      settle_weekday: '日',
+      created_at: nowIso()
+    });
+  }
+
+  ui.alert('初始化完成！請到 Settings 分頁修改預設密碼 (admin_password)。');
 }

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../hooks/useStore';
 import {
   asBool,
@@ -119,6 +119,17 @@ export default function AddRound({ onDone }: AddRoundProps) {
   );
 
   const fundTotal = cutTotal + tsumoCutTotal;
+
+  // 只改日期不算：日期本來就有預設值
+  const isDirty =
+    slots.some((s) => s.player_id !== null || s.amountInput !== '') ||
+    Object.values(tsumoCounts).some((c) => c > 0) ||
+    note.trim() !== '';
+  const { setLedgerSwitchBlocked } = actions;
+  useEffect(() => {
+    setLedgerSwitchBlocked(isDirty);
+  }, [isDirty, setLedgerSwitchBlocked]);
+  useEffect(() => () => setLedgerSwitchBlocked(false), [setLedgerSwitchBlocked]);
 
   const winners = entries.filter((e) => e.amount > 0);
   const losers = entries.filter((e) => e.amount < 0);

@@ -10,6 +10,7 @@ import {
   groupRoundsByWeek,
   hasUnsettledPriorWeek,
   playerName,
+  purposeLabels,
   weekRangeLabel,
   weekStartISO,
 } from "../lib/utils";
@@ -31,20 +32,22 @@ export default function Dashboard({ onNav }: DashboardProps) {
 
   const symbol = settings.currency_symbol || "$";
   const goal = Number(settings.goal) || 0;
-  const goalName = settings.goal_name || "旅遊目標";
+  const labels = purposeLabels(settings.purpose);
+  const goalName = settings.goal_name || labels.goalFallback;
+  const settleWeekday = settings.settle_weekday;
 
   const { balance, income, out } = calcBalance(tsumos, rounds, withdrawals);
   const { list: leaderboard } = buildLeaderboard(players, tsumos, rounds);
   const topN = leaderboard.slice(0, 10);
-  const ranking = buildSettledRanking(players, tsumos, rounds);
+  const ranking = buildSettledRanking(players, tsumos, rounds, settleWeekday);
   const progress = goal > 0 ? Math.min(100, (balance / goal) * 100) : 0;
   const remaining = Math.max(0, goal - balance);
 
   const today = new Date();
-  const thisMonday = weekStartISO(today);
-  const showReminder = hasUnsettledPriorWeek(rounds, today);
-  const unsettledWeeks = groupRoundsByWeek(rounds).filter(
-    (w) => w.weekStart < thisMonday && !w.settled,
+  const thisWeekStart = weekStartISO(today, settleWeekday);
+  const showReminder = hasUnsettledPriorWeek(rounds, settleWeekday, today);
+  const unsettledWeeks = groupRoundsByWeek(rounds, settleWeekday).filter(
+    (w) => w.weekStart < thisWeekStart && !w.settled,
   );
 
   const recentTsumos = [...(tsumos ?? [])]
@@ -145,7 +148,7 @@ export default function Dashboard({ onNav }: DashboardProps) {
             <div className="num text-[22px]">{fmtMoney(income, symbol)}</div>
           </div>
           <div>
-            <div className="text-[16px] text-ink-3 mb-1">已旅遊支出</div>
+            <div className="text-[16px] text-ink-3 mb-1">{labels.spent}</div>
             <div className="num text-[22px] text-ink-2">
               {fmtMoney(out, symbol)}
             </div>
@@ -171,7 +174,7 @@ export default function Dashboard({ onNav }: DashboardProps) {
               variant="secondary"
               onClick={() => onNav("withdrawals")}
             >
-              記錄旅遊支出
+              {labels.recordExpense}
             </Button>
           </div>
         </Card>

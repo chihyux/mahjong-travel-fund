@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useStore } from '../hooks/useStore';
-import { calcBalance, fmtDate, fmtMoney, todayISO } from '../lib/utils';
+import { calcBalance, fmtDate, fmtMoney, purposeLabels, todayISO } from '../lib/utils';
 import type { Withdrawal } from '../types';
 import Card from './ui/Card';
 import Button from './ui/Button';
@@ -17,6 +17,7 @@ export default function Withdrawals() {
   const { data, actions } = useStore();
   const { tsumos, rounds, withdrawals, settings } = data;
   const symbol = settings.currency_symbol || '$';
+  const labels = purposeLabels(settings.purpose);
 
   const { balance, out } = calcBalance(tsumos, rounds, withdrawals);
 
@@ -71,7 +72,7 @@ export default function Withdrawals() {
     <div className="space-y-6">
       <Card>
         <div className="flex items-baseline justify-between mb-5">
-          <h1 className="font-serif text-[24px] font-bold">旅遊支出</h1>
+          <h1 className="font-serif text-[24px] font-bold">{labels.expense}</h1>
           <span className="text-[16px] text-ink-3">{list.length} 筆</span>
         </div>
 
@@ -87,7 +88,7 @@ export default function Withdrawals() {
         </div>
 
         <Button icon="🧳" onClick={openAdd}>
-          記錄旅遊支出
+          {labels.recordExpense}
         </Button>
       </Card>
 
@@ -122,7 +123,7 @@ export default function Withdrawals() {
         )}
       </Card>
 
-      <Modal open={addOpen} title="記錄旅遊支出" onClose={() => setAddOpen(false)} size="sm">
+      <Modal open={addOpen} title={labels.recordExpense} onClose={() => setAddOpen(false)} size="sm">
         <div className="space-y-4">
           <div>
             <label className="block text-[18px] font-medium mb-2">日期</label>

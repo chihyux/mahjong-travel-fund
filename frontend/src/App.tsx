@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { StoreProvider, useStore } from "./hooks/useStore";
 import { API_URL } from "./config";
+import { purposeLabels } from "./lib/utils";
 import type { ViewKey } from "./types";
 
 import Shell from "./components/Shell";
@@ -27,10 +28,12 @@ interface MoreMenuProps {
 }
 
 function MoreMenu({ onNav, onLogout }: MoreMenuProps) {
+  const { data } = useStore();
+  const labels = purposeLabels(data.settings.purpose);
   const items: ReadonlyArray<MoreMenuItem> = [
     { key: "addRound", icon: "🀄", label: "每局結算" },
     { key: "weeklySettlements", icon: "📅", label: "週結算" },
-    { key: "withdrawals", icon: "🧳", label: "旅遊支出" },
+    { key: "withdrawals", icon: "🧳", label: labels.expense },
     { key: "players", icon: "👥", label: "玩家管理" },
     { key: "settings", icon: "⚙️", label: "設定" },
   ];
@@ -101,7 +104,7 @@ const ADMIN_ONLY_VIEWS: ReadonlyArray<ViewKey> = [
 ];
 
 function AppInner() {
-  const { loading, error, isAdmin, actions } = useStore();
+  const { loading, error, isAdmin, actions, ledgerId } = useStore();
   const [view, setView] = useState<ViewKey>("dashboard");
 
   useEffect(() => {
@@ -148,9 +151,11 @@ function AppInner() {
       case "history":
         return <History />;
       case "addRound":
-        return <AddRound onDone={() => setView("dashboard")} />;
+        // 以帳本為 key：切換帳本時重新掛載，清掉上一本帳未送出的表單
+        return <AddRound key={ledgerId ?? ""} onDone={() => setView("dashboard")} />;
       case "weeklySettlements":
-        return <WeeklySettlements />;
+        // 以帳本為 key：展開逐局的狀態不帶到另一本帳
+        return <WeeklySettlements key={ledgerId ?? ""} />;
       case "players":
         return <Players />;
       case "withdrawals":

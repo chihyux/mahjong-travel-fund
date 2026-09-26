@@ -1,11 +1,16 @@
 import { useState } from 'react';
 import { useStore } from '../hooks/useStore';
-import { asBool, calcContributions, fmtMoney } from '../lib/utils';
+import {
+  asBool,
+  calcContributions,
+  fmtMoney,
+  isNameTaken,
+  pullCandidates
+} from '../lib/utils';
 import type { Id, Player } from '../types';
 import Card from './ui/Card';
 import Button from './ui/Button';
 import Modal from './ui/Modal';
-import ConfirmDialog from './ui/ConfirmDialog';
 
 interface EditingPlayer {
   id: Id;
@@ -13,7 +18,7 @@ interface EditingPlayer {
 }
 
 export default function Players() {
-  const { data, actions } = useStore();
+  const { data, allPlayers, actions } = useStore();
   const { players, tsumos, rounds, settings } = data;
   const symbol = settings.currency_symbol || '$';
 
@@ -21,9 +26,17 @@ export default function Players() {
   const [newName, setNewName] = useState('');
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<EditingPlayer | null>(null);
-  const [confirmDel, setConfirmDel] = useState<Player | null>(null);
+  const [pullOpen, setPullOpen] = useState(false);
+  const [picked, setPicked] = useState<Set<Id>>(() => new Set());
 
   const contrib = calcContributions(players, tsumos, rounds);
+  const candidates = pullCandidates(allPlayers, players);
+
+  const newNameTaken = !!newName.trim() && isNameTaken(allPlayers, newName);
+  // 同名的人已在這本帳時拉入清單裡不會有他，不能叫使用者去拉入
+  const newNameInLedger = newNameTaken && isNameTaken(players, newName);
+  const editNameTaken =
+    !!editing && !!editing.name.trim() && isNameTaken(allPlayers, editing.name, editing.id);
 
   const sorted = [...players].sort((a, b) => {
     const aActive = asBool(a.active);
@@ -36,7 +49,7 @@ export default function Players() {
 
   const addNew = async () => {
     const name = newName.trim();
-    if (!name) return;
+    if (!name || isNameTaken(allPlayers, name)) return;
     setBusy(true);
     try {
       await actions.addPlayer(name);
@@ -49,9 +62,8 @@ export default function Players() {
   };
 
   const toggleActive = async (player: Player) => {
-    const nextActive = !asBool(player.active);
     try {
-      await actions.updatePlayer({ id: player.id, active: nextActive });
+      await actions.setMemberActive(player.id, !asBool(player.active));
     } catch {
       // toast handled
     }
@@ -60,7 +72,7 @@ export default function Players() {
   const saveEdit = async () => {
     if (!editing) return;
     const name = editing.name.trim();
-    if (!name) return;
+    if (!name || isNameTaken(allPlayers, name, editing.id)) return;
     setBusy(true);
     try {
       await actions.updatePlayer({ id: editing.id, name });
@@ -71,14 +83,30 @@ export default function Players() {
     setBusy(false);
   };
 
-  const doDelete = async () => {
-    if (!confirmDel) return;
+  const openPull = () => {
+    setPicked(new Set());
+    setPullOpen(true);
+  };
+
+  const togglePick = (id: Id) => {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const submitPull = async () => {
+    if (picked.size === 0) return;
+    setBusy(true);
     try {
-      await actions.deletePlayer(confirmDel.id);
+      await actions.addMembers([...picked]);
+      setPullOpen(false);
     } catch {
       // toast handled
     }
-    setConfirmDel(null);
+    setBusy(false);
   };
 
   return (
@@ -89,9 +117,19 @@ export default function Players() {
           <span className="text-[16px] text-ink-3">{players.length} 人</span>
         </div>
 
-        <Button icon="＋" onClick={() => setAddOpen(true)}>
-          新增玩家
-        </Button>
+        <div className="space-y-3">
+          <Button icon="＋" onClick={() => setAddOpen(true)}>
+            新增玩家
+          </Button>
+          <Button
+            icon="👥"
+            variant="secondary"
+            onClick={openPull}
+            disabled={candidates.length === 0}
+          >
+            從現有玩家拉入
+          </Button>
+        </div>
       </Card>
 
       <Card>
@@ -138,15 +176,6 @@ export default function Players() {
                   >
                     {active ? '停用' : '啟用'}
                   </button>
-                  {c.total === 0 && (
-                    <button
-                      onClick={() => setConfirmDel(p)}
-                      className="w-11 h-11 rounded-full hover:bg-red-50 flex items-center justify-center text-ink-3 text-xl"
-                      aria-label="刪除"
-                    >
-                      ×
-                    </button>
-                  )}
                 </div>
               );
             })}
@@ -154,7 +183,6 @@ export default function Players() {
         )}
         <div className="text-[14px] text-ink-3 mt-4 leading-relaxed">
           說明：停用的玩家不會出現在新增自摸/結算的選單，但歷史記錄仍保留。
-          有貢獻記錄的玩家無法直接刪除，避免破壞歷史資料。
         </div>
       </Card>
 
@@ -172,6 +200,13 @@ export default function Players() {
               autoFocus
               placeholder="請輸入玩家名字"
             />
+            {newNameTaken && (
+              <p className="text-[15px] text-red-700 mt-2">
+                {newNameInLedger
+                  ? '這本帳已有這位玩家'
+                  : '已有這位玩家，請改用「從現有玩家拉入」'}
+              </p>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Button
@@ -182,7 +217,11 @@ export default function Players() {
             >
               取消
             </Button>
-            <Button size="md" onClick={addNew} disabled={busy || !newName.trim()}>
+            <Button
+              size="md"
+              onClick={addNew}
+              disabled={busy || !newName.trim() || newNameTaken}
+            >
               {busy ? '儲存中…' : '新增'}
             </Button>
           </div>
@@ -203,6 +242,9 @@ export default function Players() {
                 }}
                 autoFocus
               />
+              {editNameTaken && (
+                <p className="text-[15px] text-red-700 mt-2">已有同名的玩家</p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <Button
@@ -213,7 +255,11 @@ export default function Players() {
               >
                 取消
               </Button>
-              <Button size="md" onClick={saveEdit} disabled={busy || !editing.name.trim()}>
+              <Button
+                size="md"
+                onClick={saveEdit}
+                disabled={busy || !editing.name.trim() || editNameTaken}
+              >
                 {busy ? '儲存中…' : '儲存'}
               </Button>
             </div>
@@ -221,14 +267,36 @@ export default function Players() {
         )}
       </Modal>
 
-      <ConfirmDialog
-        open={!!confirmDel}
-        title="確認刪除"
-        message={`確定要刪除玩家「${confirmDel?.name ?? ''}」嗎？此動作無法復原。`}
-        confirmText="刪除"
-        onConfirm={doDelete}
-        onCancel={() => setConfirmDel(null)}
-      />
+      <Modal open={pullOpen} title="從現有玩家拉入" onClose={() => setPullOpen(false)} size="sm">
+        <div className="space-y-4">
+          <div className="divide-y divide-divider max-h-[50vh] overflow-y-auto">
+            {candidates.map((p) => (
+              <label key={p.id} className="flex items-center gap-3 py-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={picked.has(p.id)}
+                  onChange={() => togglePick(p.id)}
+                  className="w-6 h-6 accent-sage"
+                />
+                <span className="text-[18px]">{p.name}</span>
+              </label>
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Button
+              variant="secondary"
+              size="md"
+              onClick={() => setPullOpen(false)}
+              disabled={busy}
+            >
+              取消
+            </Button>
+            <Button size="md" onClick={submitPull} disabled={busy || picked.size === 0}>
+              {busy ? '儲存中…' : `拉入 ${picked.size} 人`}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -1,12 +1,16 @@
 import dayjs from 'dayjs';
 import type {
+  AppData,
   BoolLike,
+  GlobalPlayer,
   Id,
   IsoDate,
+  Ledger,
   NumLike,
   Player,
   Round,
   RoundEntry,
+  Snapshot,
   Tsumo,
   Withdrawal
 } from '../types';
@@ -57,15 +61,17 @@ export function todayISO(): string {
   return dayjs().format('YYYY-MM-DD');
 }
 
-// ===== 週 (Monday-Sunday) 工具 =====
+// ===== 週工具 =====
+// 結算日是週期的最後一天（0 = 週日，同 dayjs().day()），週期從結算日的隔天開始。
+// 結算日 = 週日時就是週一到週日。
 
-// 回傳某日所屬週的週一日期（YYYY-MM-DD）
-export function weekStartISO(value: string | Date): string {
+// 回傳某日所屬週期的第一天（YYYY-MM-DD）
+export function weekStartISO(value: string | Date, settleWeekday: number): string {
   const d = dayjs(value);
   if (!d.isValid()) return '';
-  const day = d.day(); // 0=Sun, 1=Mon, ..., 6=Sat
-  const diff = day === 0 ? -6 : 1 - day;
-  return d.add(diff, 'day').format('YYYY-MM-DD');
+  const startDay = (settleWeekday + 1) % 7;
+  const back = (d.day() - startDay + 7) % 7;
+  return d.subtract(back, 'day').format('YYYY-MM-DD');
 }
 
 export function weekRangeLabel(weekStart: string): string {
@@ -272,18 +278,21 @@ export function groupByRoundId(rounds: Round[] | undefined): RoundGroup[] {
 }
 
 export interface WeekBucket {
-  weekStart: string;        // YYYY-MM-DD (Monday)
+  weekStart: string;        // YYYY-MM-DD（週期第一天）
   rounds: RoundGroup[];
   cutTotal: number;
   perPlayer: Record<Id, number>; // 累計淨輸贏
   settled: boolean;         // 整週皆已結算才為 true
 }
 
-export function groupRoundsByWeek(rounds: Round[] | undefined): WeekBucket[] {
+export function groupRoundsByWeek(
+  rounds: Round[] | undefined,
+  settleWeekday: number
+): WeekBucket[] {
   const byId = groupByRoundId(rounds);
   const weeks = new Map<string, WeekBucket>();
   for (const g of byId) {
-    const wk = weekStartISO(g.date);
+    const wk = weekStartISO(g.date, settleWeekday);
     if (!wk) continue;
     let bucket = weeks.get(wk);
     if (!bucket) {
@@ -304,11 +313,12 @@ export function groupRoundsByWeek(rounds: Round[] | undefined): WeekBucket[] {
 
 export function hasUnsettledPriorWeek(
   rounds: Round[] | undefined,
+  settleWeekday: number,
   today: Date = new Date()
 ): boolean {
-  const thisMonday = weekStartISO(today);
-  const weeks = groupRoundsByWeek(rounds);
-  return weeks.some((w) => w.weekStart < thisMonday && !w.settled);
+  const thisWeekStart = weekStartISO(today, settleWeekday);
+  const weeks = groupRoundsByWeek(rounds, settleWeekday);
+  return weeks.some((w) => w.weekStart < thisWeekStart && !w.settled);
 }
 
 // ===== 已結算排名榜 =====
@@ -327,16 +337,17 @@ export interface SettledRankingEntry {
 
 export interface SettledRanking {
   list: SettledRankingEntry[];        // sorted by net desc
-  cutoffISO: string | null;           // latest settled week's Sunday (weekStart + 6); null if none
+  cutoffISO: string | null;           // 最後一個已結算週期的最後一天（weekStart + 6）；沒有則為 null
   settledWeekCount: number;
 }
 
 export function buildSettledRanking(
   players: Player[],
   tsumos: Tsumo[] | undefined,
-  rounds: Round[] | undefined
+  rounds: Round[] | undefined,
+  settleWeekday: number
 ): SettledRanking {
-  const weeks = groupRoundsByWeek(rounds);
+  const weeks = groupRoundsByWeek(rounds, settleWeekday);
   const settledWeeks = weeks.filter((w) => w.settled);
   const settledWeekStarts = new Set(settledWeeks.map((w) => w.weekStart));
 
@@ -362,7 +373,7 @@ export function buildSettledRanking(
   }
 
   for (const t of tsumos ?? []) {
-    const wk = weekStartISO(t.date);
+    const wk = weekStartISO(t.date, settleWeekday);
     if (!wk || !settledWeekStarts.has(wk)) continue;
     const pid = t.player_id;
     tsumoAmountByPid[pid] = (tsumoAmountByPid[pid] ?? 0) + (Number(t.amount) || 0);
@@ -392,7 +403,6 @@ export function buildSettledRanking(
     .filter((e) => e.winLoss !== 0 || e.cut !== 0 || e.tsumoAmount !== 0)
     .sort((a, b) => b.net - a.net);
 
-  // latest settled week's Sunday = weekStart + 6 days, in 'YYYY-MM-DD'
   let cutoffISO: string | null = null;
   if (settledWeeks.length > 0) {
     const sorted = settledWeeks
@@ -403,6 +413,83 @@ export function buildSettledRanking(
   }
 
   return { list, cutoffISO, settledWeekCount: settledWeeks.length };
+}
+
+// ===== 帳本 =====
+// 後端 backend/Code.gs 有同一份 WEEKDAY_ZH，兩邊要一起改
+export const WEEKDAY_ZH = ['日', '一', '二', '三', '四', '五', '六'] as const;
+
+export function settleDayLabel(settleWeekday: number): string {
+  return WEEKDAY_ZH[settleWeekday] ?? '日';
+}
+
+export interface PurposeLabels {
+  expense: string;
+  recordExpense: string;
+  spent: string;
+  goalNameField: string;
+  goalFallback: string;
+}
+
+// purpose 為空時直接接成「支出」「目標」等通用說法
+export function purposeLabels(purpose: string): PurposeLabels {
+  return {
+    expense: `${purpose}支出`,
+    recordExpense: `記錄${purpose}支出`,
+    spent: `已${purpose}支出`,
+    goalNameField: `${purpose}目標名稱`,
+    goalFallback: `${purpose}目標`
+  };
+}
+
+// 記住的帳本已不存在時退回第一本（後端依代號排序，即 L1）
+export function resolveLedgerId(ledgers: Ledger[], stored: string | null): Id | null {
+  if (stored && ledgers.some((l) => l.id === stored)) return stored;
+  return ledgers[0]?.id ?? null;
+}
+
+export function buildLedgerView(snapshot: Snapshot, ledgerId: Id | null): AppData | null {
+  const ledger = snapshot.ledgers.find((l) => l.id === ledgerId);
+  if (!ledger) return null;
+  const byId = new Map(snapshot.players.map((p) => [String(p.id), p]));
+  const players: Player[] = [];
+  for (const m of ledger.members) {
+    const p = byId.get(String(m.player_id));
+    if (!p) continue;
+    players.push({ id: p.id, name: p.name, active: m.active, created_at: p.created_at });
+  }
+  return {
+    players,
+    tsumos: ledger.tsumos,
+    rounds: ledger.rounds,
+    withdrawals: ledger.withdrawals,
+    settings: {
+      name: ledger.name,
+      purpose: ledger.purpose,
+      goal: ledger.goal,
+      goal_name: ledger.goal_name,
+      tsumo_amount: ledger.tsumo_amount,
+      cut_ratio: ledger.cut_ratio,
+      settle_weekday: ledger.settle_weekday,
+      currency_symbol: snapshot.settings.currency_symbol || '$'
+    }
+  };
+}
+
+// 拉入候選：還不是這本帳成員的全域玩家，包含在其他帳本停用的人
+export function pullCandidates(allPlayers: GlobalPlayer[], members: Player[]): GlobalPlayer[] {
+  const memberIds = new Set(members.map((p) => p.id));
+  return allPlayers.filter((p) => !memberIds.has(p.id));
+}
+
+// 玩家名稱與帳本名稱都要唯一；後端 findNameConflict 會再檢查一次
+export function isNameTaken(
+  rows: ReadonlyArray<{ id: Id; name: string }>,
+  name: string,
+  exceptId?: Id
+): boolean {
+  const target = name.trim();
+  return rows.some((r) => r.id !== exceptId && String(r.name).trim() === target);
 }
 
 export const sleep = (ms: number): Promise<void> =>

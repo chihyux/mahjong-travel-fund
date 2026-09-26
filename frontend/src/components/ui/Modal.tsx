@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 
 type ModalSize = 'sm' | 'md' | 'lg';
 
@@ -32,7 +33,8 @@ export default function Modal({ open, title, children, onClose, size = 'md' }: M
 
   if (!open) return null;
 
-  return (
+  // 渲染到 body：祖先有 backdrop-filter（例如手機 header 的 backdrop-blur）時，fixed 會以該祖先為定位基準而被困住
+  return createPortal(
     <div className="fixed inset-0 z-40 flex items-end md:items-center justify-center">
       <div
         className="absolute inset-0 bg-ink/40 backdrop-blur-sm"
@@ -55,6 +57,7 @@ export default function Modal({ open, title, children, onClose, size = 'md' }: M
         )}
         {children}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -6,6 +6,7 @@ import {
   fmtSignedMoney,
   groupRoundsByWeek,
   playerName,
+  settleDayLabel,
   weekRangeLabel,
   weekStartISO,
 } from "../lib/utils";
@@ -24,8 +25,17 @@ export default function WeeklySettlements() {
   const { players, rounds, tsumos, settings } = data;
   const symbol = settings.currency_symbol || "$";
 
-  const weeks = useMemo(() => groupRoundsByWeek(rounds), [rounds]);
-  const thisMonday = weekStartISO(new Date());
+  const settleWeekday = settings.settle_weekday;
+  const weeks = useMemo(
+    () => groupRoundsByWeek(rounds, settleWeekday),
+    [rounds, settleWeekday],
+  );
+  const thisWeekStart = weekStartISO(new Date(), settleWeekday);
+  const settleLine = (
+    <div className="text-[16px] text-ink-3">
+      每週{settleDayLabel(settleWeekday)}結算
+    </div>
+  );
 
   // 每週 × 每玩家的 cut（抽成）與 tsumo（當週自摸金額）聚合
   // 用於計算「實拿 = amount − cut − tsumo」
@@ -43,12 +53,12 @@ export default function WeeklySettlements() {
       }
     }
     for (const t of tsumos ?? []) {
-      const wk = weekStartISO(t.date);
+      const wk = weekStartISO(t.date, settleWeekday);
       if (!wk || !result[wk]) continue; // 只納入已有 rounds 的週
       ensure(wk, t.player_id).tsumo += Number(t.amount) || 0;
     }
     return result;
-  }, [weeks, tsumos]);
+  }, [weeks, tsumos, settleWeekday]);
 
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [confirm, setConfirm] = useState<{
@@ -72,17 +82,21 @@ export default function WeeklySettlements() {
 
   if (weeks.length === 0) {
     return (
-      <Card>
-        <div className="text-center py-12 text-ink-3">
-          <div className="text-5xl mb-3">💰</div>
-          <div className="text-[18px]">還沒有每局結算記錄</div>
-        </div>
-      </Card>
+      <div className="space-y-4">
+        {settleLine}
+        <Card>
+          <div className="text-center py-12 text-ink-3">
+            <div className="text-5xl mb-3">💰</div>
+            <div className="text-[18px]">還沒有每局結算記錄</div>
+          </div>
+        </Card>
+      </div>
     );
   }
 
   return (
     <div className="space-y-4">
+      {settleLine}
       {!isAdmin && (
         <div className="flex items-center gap-3 p-4 rounded-2xl bg-honey/10 border-2 border-honey/40">
           <span className="text-2xl">🔒</span>
@@ -94,7 +108,7 @@ export default function WeeklySettlements() {
         </div>
       )}
       {weeks.map((w) => {
-        const isCurrentWeek = w.weekStart === thisMonday;
+        const isCurrentWeek = w.weekStart === thisWeekStart;
         const isOpen = !!expanded[w.weekStart];
         const detail = perWeekPlayerDetail[w.weekStart] ?? {};
         const perPlayerList = Object.entries(w.perPlayer)
@@ -117,7 +131,7 @@ export default function WeeklySettlements() {
         );
         const weekFundTotal = w.cutTotal + weekTsumoTotal;
         const weekTsumos = (tsumos ?? [])
-          .filter((t) => weekStartISO(t.date) === w.weekStart)
+          .filter((t) => weekStartISO(t.date, settleWeekday) === w.weekStart)
           .slice()
           .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 

@@ -33,7 +33,7 @@ export default function Login({ onDone }: LoginProps) {
       <Card>
         <div className="text-center mb-6">
           <h1 className="font-serif text-[28px] font-bold">
-            {data.settings.group_name || "家庭旅遊基金"}
+            {data.settings.name}
           </h1>
           <p className="text-[16px] text-ink-3 mt-1">管理員登入</p>
         </div>

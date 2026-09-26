@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { useStore } from "../hooks/useStore";
+import { purposeLabels } from "../lib/utils";
 import Toast from "./ui/Toast";
+import LedgerSelect from "./LedgerSelect";
 import type { ViewKey } from "../types";
 
 interface NavEntry {
@@ -30,9 +32,11 @@ interface ShellProps {
 }
 
 export default function Shell({ current, onNav, children }: ShellProps) {
-  const { data, isAdmin, toast } = useStore();
-  const groupName = data.settings.group_name || "家庭旅遊基金";
+  const { data, ledgers, isAdmin, toast } = useStore();
+  const groupName = data.settings.name;
+  const labels = purposeLabels(data.settings.purpose);
   const nav = isAdmin ? ADMIN_NAV : PUBLIC_NAV;
+  const showLedgerSelect = ledgers.length > 1;
 
   return (
     <div className="min-h-screen bg-bg">
@@ -76,7 +80,7 @@ export default function Shell({ current, onNav, children }: ShellProps) {
                 />
                 <NavItem
                   icon="🧳"
-                  label="旅遊支出"
+                  label={labels.expense}
                   active={current === "withdrawals"}
                   onClick={() => onNav("withdrawals")}
                 />
@@ -108,20 +112,28 @@ export default function Shell({ current, onNav, children }: ShellProps) {
         </aside>
 
         <header className="md:hidden sticky top-0 z-20 bg-bg/90 backdrop-blur border-b border-divider">
-          <div className="flex items-center justify-between px-4 h-14">
-            <div className="flex items-center gap-2">
-              <span className="font-serif text-[18px] font-bold">
+          <div className="flex items-center justify-between gap-3 px-4 h-16">
+            <div className="min-w-0">
+              <div className="font-serif text-[18px] font-bold leading-tight truncate">
                 {groupName}
-              </span>
+              </div>
+              <div className="text-[13px] text-ink-3 leading-tight">
+                {isAdmin ? "管理員" : "訪客"}
+              </div>
             </div>
-            <div className="text-[13px] text-ink-3">
-              {isAdmin ? "管理員" : "訪客"}
-            </div>
+            {showLedgerSelect && <LedgerSelect />}
           </div>
         </header>
 
         <main className="flex-1 min-w-0">
-          <div className="max-w-2xl mx-auto p-4 md:p-8 pb-tab">{children}</div>
+          <div className="max-w-2xl mx-auto p-4 md:p-8 pb-tab">
+            {showLedgerSelect && (
+              <div className="hidden md:flex justify-end mb-4">
+                <LedgerSelect />
+              </div>
+            )}
+            {children}
+          </div>
         </main>
       </div>
 

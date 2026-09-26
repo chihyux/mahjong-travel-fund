@@ -6,9 +6,24 @@ export type IsoDate = string;   // 'YYYY-MM-DD' or ISO timestamp
 export type BoolLike = boolean | string;
 export type NumLike = number | string;
 
+// 目前帳本視圖中的玩家：name 取全域玩家，active 取這本帳的成員狀態
 export interface Player {
   id: Id;
   name: string;
+  active: BoolLike;
+  created_at: IsoDate;
+}
+
+// Players 分頁：全部帳本共用
+export interface GlobalPlayer {
+  id: Id;
+  name: string;
+  created_at: IsoDate;
+}
+
+// Members__L* 分頁：玩家在某本帳的成員資格與停用狀態
+export interface Member {
+  player_id: Id;
   active: BoolLike;
   created_at: IsoDate;
 }
@@ -45,17 +60,42 @@ export interface Withdrawal {
   created_at: IsoDate;
 }
 
-export interface SettingsMap {
-  admin_password?: string;
-  tsumo_amount?: NumLike;
-  cut_ratio?: NumLike;
-  goal?: NumLike;
-  goal_name?: string;
-  group_name?: string;
-  currency_symbol?: string;
-  [key: string]: string | number | boolean | undefined;
+export interface Ledger {
+  id: Id;                   // 'L1'、'L2'…
+  name: string;
+  purpose: string;          // 用途的一個詞，例如「旅遊」，用來組畫面文字；可為空
+  goal: NumLike;
+  goal_name: string;
+  tsumo_amount: number;     // 後端已套用預設值
+  cut_ratio: number;        // 後端已套用預設值
+  settle_weekday: number;   // 結算日，0 = 週日（同 dayjs().day()）
+  created_at: IsoDate;
+  members: Member[];
+  rounds: Round[];
+  tsumos: Tsumo[];
+  withdrawals: Withdrawal[];
 }
 
+// getAll 回傳：全域資料加上所有帳本
+export interface Snapshot {
+  settings: { currency_symbol?: string };
+  players: GlobalPlayer[];
+  ledgers: Ledger[];
+}
+
+// 目前帳本的設定，加上全域的 currency_symbol
+export interface SettingsMap {
+  name: string;
+  purpose: string;
+  goal: NumLike;
+  goal_name: string;
+  tsumo_amount: number;
+  cut_ratio: number;
+  settle_weekday: number;
+  currency_symbol: string;
+}
+
+// 元件看到的是目前帳本的資料視圖
 export interface AppData {
   players: Player[];
   tsumos: Tsumo[];
@@ -64,28 +104,16 @@ export interface AppData {
   settings: SettingsMap;
 }
 
-// ===== Action payloads =====
-
-export interface TsumoPayload {
-  date: IsoDate;
-  player_id: Id;
-  count: number;
-  note?: string;
-}
-
-export interface TsumoUpdatePayload extends Partial<TsumoPayload> {
+export interface LedgerOption {
   id: Id;
+  name: string;
 }
+
+// ===== Action payloads =====
 
 export interface RoundEntry {
   player_id: Id;
   amount: number;
-}
-
-export interface RoundPayload {
-  date: IsoDate;
-  entries: RoundEntry[]; // 必須恰好 4 筆，玩家不重複，amount 總和 = 0
-  note?: string;
 }
 
 export interface RoundTsumoEntry {
@@ -108,8 +136,13 @@ export interface WithdrawalPayload {
 
 export interface PlayerUpdatePayload {
   id: Id;
+  name: string;
+}
+
+export interface LedgerUpdatePayload {
   name?: string;
-  active?: boolean;
+  goal?: number;
+  goal_name?: string;
 }
 
 // ===== API envelope =====
