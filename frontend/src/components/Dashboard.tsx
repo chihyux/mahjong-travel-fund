@@ -66,6 +66,7 @@ export default function Dashboard({ onNav }: DashboardProps) {
   if (loading) {
     return (
       <div className="space-y-6">
+        <div className="text-center text-[18px] text-ink-3">資料載入中…</div>
         <Card>
           <Skeleton h={80} className="mb-4" />
           <Skeleton h={40} />

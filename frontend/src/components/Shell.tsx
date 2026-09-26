@@ -32,8 +32,9 @@ interface ShellProps {
 }
 
 export default function Shell({ current, onNav, children }: ShellProps) {
-  const { data, ledgers, isAdmin, toast } = useStore();
-  const groupName = data.settings.name;
+  const { data, ledgers, loading, isAdmin, toast } = useStore();
+  // 讀取要等好幾秒，期間標題空白會看起來像資料不見
+  const groupName = loading ? "載入中…" : data.settings.name;
   const labels = purposeLabels(data.settings.purpose);
   const nav = isAdmin ? ADMIN_NAV : PUBLIC_NAV;
   const showLedgerSelect = ledgers.length > 1;

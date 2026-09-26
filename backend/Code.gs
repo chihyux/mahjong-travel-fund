@@ -130,25 +130,77 @@ function newId(prefix) {
 
 function nowIso() { return new Date().toISOString(); }
 
-function readSheet(name) {
-  const sheet = ss().getSheetByName(name);
-  if (!sheet) throw new Error('Sheet not found: ' + name);
-  const values = sheet.getDataRange().getValues();
+// 第一列是表頭，其餘每列轉成物件；全空的列略過。convert 處理個別儲存格
+function rowsToObjects(values, convert) {
   if (values.length < 2) return [];
   const headers = values[0];
   const rows = [];
   for (let i = 1; i < values.length; i++) {
     const row = values[i];
-    if (row.every(c => c === '' || c === null)) continue;
+    if (row.every(c => c === '' || c === null || c === undefined)) continue;
     const obj = {};
     for (let j = 0; j < headers.length; j++) {
-      let v = row[j];
-      if (v instanceof Date) v = v.toISOString();
-      obj[headers[j]] = v;
+      const v = row[j];
+      obj[headers[j]] = convert(v === undefined ? '' : v, headers[j]);
     }
     rows.push(obj);
   }
   return rows;
+}
+
+function readSheet(name) {
+  const sheet = ss().getSheetByName(name);
+  if (!sheet) throw new Error('Sheet not found: ' + name);
+  return rowsToObjects(sheet.getDataRange().getValues(), v => (v instanceof Date ? v.toISOString() : v));
+}
+
+// 會存成日期的欄位；Sheets API 回傳的日期是序列值，要轉成跟 readSheet 一樣的 ISO 字串
+const DATE_COLUMNS = ['date', 'created_at', 'settled_at'];
+
+// 序列值是試算表時區下的日期時間（以 1899-12-30 為第 0 天），先取出牆上時間再依時區換成實際時刻。
+// Utilities 每次呼叫都慢，上千個日期格會花掉一秒以上；時區差同一小時內不變，按小時快取
+function serialToIso(serial, tz, offsetByHour) {
+  const wallMs = Math.round((serial - 25569) * 86400) * 1000;
+  const hour = Math.floor(wallMs / 3600000);
+  let offset = offsetByHour[hour];
+  if (offset === undefined) {
+    const hourStart = hour * 3600000;
+    const text = Utilities.formatDate(new Date(hourStart), 'UTC', 'yyyy-MM-dd HH:mm:ss');
+    offset = hourStart - Utilities.parseDate(text, tz, 'yyyy-MM-dd HH:mm:ss').getTime();
+    offsetByHour[hour] = offset;
+  }
+  return new Date(wallMs - offset).toISOString();
+}
+
+// 每讀一個分頁是一次往返（約 0.3 秒）；用 Sheets 進階服務一次讀完。需在編輯器的「服務」加入 Google Sheets API
+function batchReadSheets(names) {
+  const spreadsheet = ss();
+  const res = Sheets.Spreadsheets.Values.batchGet(spreadsheet.getId(), {
+    ranges: names.map(n => "'" + n.replace(/'/g, "''") + "'"),
+    valueRenderOption: 'UNFORMATTED_VALUE',
+    dateTimeRenderOption: 'SERIAL_NUMBER'
+  });
+  const tz = spreadsheet.getSpreadsheetTimeZone();
+  const offsetByHour = {};
+  const out = {};
+  (res.valueRanges || []).forEach((vr, i) => {
+    out[names[i]] = rowsToObjects(vr.values || [], (v, header) =>
+      typeof v === 'number' && DATE_COLUMNS.indexOf(header) >= 0 ? serialToIso(v, tz, offsetByHour) : v
+    );
+  });
+  return out;
+}
+
+// 進階服務沒啟用或超過用量時退回逐頁讀，最差只是變慢
+function readSheets(names) {
+  try {
+    return batchReadSheets(names);
+  } catch (err) {
+    console.warn('batchReadSheets 失敗，改逐頁讀取：' + err.message);
+    const out = {};
+    names.forEach(n => { out[n] = readSheet(n); });
+    return out;
+  }
 }
 
 function appendRow(name, obj) {
@@ -328,11 +380,20 @@ function doPost(e) {
 
 // ===== Handlers =====
 function handleGetAll() {
-  const settings = readSettings();
+  const sheetNames = new Set(ss().getSheets().map(sh => sh.getName()));
+  const ledgerTabs = [...sheetNames].filter(n => LEDGER_SHEETS.some(s => n.indexOf(s.base + '__') === 0));
+  const data = readSheets([SHEET_SETTINGS, SHEET_PLAYERS, SHEET_LEDGERS].concat(ledgerTabs));
+
+  const settings = {};
+  data[SHEET_SETTINGS].forEach(r => { if (r.key) settings[r.key] = r.value; });
   delete settings.admin_password;
-  const rows = readLedgers();
+
+  const rows = data[SHEET_LEDGERS];
   // 一本帳壞掉不拖垮其他帳本；但全部都壞時要報錯，否則畫面看起來像資料被清空
-  const valid = rows.filter(l => ledgerSheetsPresent(l.id));
+  const valid = rows.filter(l => {
+    const id = String(l.id || '');
+    return id !== '' && LEDGER_SHEETS.every(s => sheetNames.has(ledgerSheetName(s.base, id)));
+  });
   if (rows.length > 0 && valid.length === 0) {
     throw new Error('帳本分頁不完整：' + rows.map(l => String(l.id)).join(', '));
   }
@@ -349,14 +410,14 @@ function handleGetAll() {
         cut_ratio: ledgerCutRatio(l),
         settle_weekday: parseSettleWeekday(l.settle_weekday),
         created_at: l.created_at,
-        members: readSheet(ledgerSheetName(BASE_MEMBERS, id)),
-        rounds: readSheet(ledgerSheetName(BASE_ROUNDS, id)),
-        tsumos: readSheet(ledgerSheetName(BASE_TSUMOS, id)),
-        withdrawals: readSheet(ledgerSheetName(BASE_WITHDRAWALS, id))
+        members: data[ledgerSheetName(BASE_MEMBERS, id)],
+        rounds: data[ledgerSheetName(BASE_ROUNDS, id)],
+        tsumos: data[ledgerSheetName(BASE_TSUMOS, id)],
+        withdrawals: data[ledgerSheetName(BASE_WITHDRAWALS, id)]
       };
     })
     .sort((a, b) => ledgerNumber(a.id) - ledgerNumber(b.id));
-  return okOut({ settings: settings, players: readSheet(SHEET_PLAYERS), ledgers: ledgers });
+  return okOut({ settings: settings, players: data[SHEET_PLAYERS], ledgers: ledgers });
 }
 
 function handleLogin(body) {
