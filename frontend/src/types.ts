@@ -150,6 +150,8 @@ export interface LedgerUpdatePayload {
 export interface ApiSuccess<T> {
   ok: true;
   data: T;
+  // 寫入成功時後端附上的最新資料；後端讀取失敗時不會有
+  snapshot?: Snapshot;
 }
 
 export interface ApiFailure {

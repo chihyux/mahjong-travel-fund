@@ -5,6 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5" />
   <meta name="theme-color" content="#F3F1E9" />
   <title>家庭旅遊基金</title>
+  <script>
+    // 不等 JS bundle 載完就先發 getAll，Apps Script 一次往返要好幾秒。
+    // 要放在 stylesheet 前面：inline script 會等前面的 CSS 下載完才執行
+    (function () {
+      var api = '%VITE_API_URL%';
+      if (api.indexOf('https://') !== 0) return;
+      var url = new URL(api);
+      url.searchParams.set('action', 'getAll');
+      window.__mtfPrefetch = fetch(url.toString());
+      // 沒被接手時不要在 console 留下 unhandled rejection
+      window.__mtfPrefetch.catch(function () {});
+    })();
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@500;700;900&family=Noto+Sans+TC:wght@400;500;700;900&family=Fraunces:opsz,wght@9..144,600;9..144,700;9..144,900&display=swap" rel="stylesheet" />

@@ -18,13 +18,15 @@ export default function Login({ onDone }: LoginProps) {
     if (!password.trim()) return;
     setBusy(true);
     setErrMsg("");
-    const ok = await actions.login(password.trim());
+    const result = await actions.login(password.trim());
     setBusy(false);
-    if (ok) {
+    if (result === "ok") {
       onDone();
-    } else {
+    } else if (result === "invalid") {
       setErrMsg("密碼錯誤，請重新輸入");
       setPassword("");
+    } else {
+      setErrMsg("連線有問題，請再按一次登入");
     }
   };
 

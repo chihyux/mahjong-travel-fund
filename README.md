@@ -82,13 +82,13 @@ mahjong-travel-fund/
 以單一 `.gs` 檔處理所有讀寫：
 
 - `doGet(e)`：讀取流程，回傳全域分頁與所有帳本的完整 snapshot
-- `doPost(e)`：以 `action` 字串 dispatch，寫入類動作先驗密碼（比對 `Settings.admin_password`）
+- `doPost(e)`：以 `action` 字串 dispatch，寫入類動作先驗密碼（比對 `Settings.admin_password`）；寫入成功的回應多帶 `snapshot`（同 `getAll` 的資料），前端直接用，不再另外打 `getAll`
 - `addRoundWithTsumos`：一次寫入該局 4 列 `Rounds__L*` 與對應 `Tsumos__L*` 列（前端主要進帳入口）；帳本層級的寫入都帶 `ledger_id`
 - 資料存取：`SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name)`；以欄位 header row 對應成 object，避免硬編欄位 index
 - 新增：`appendRow`；更新：`getDataRange().getValues()` 後找 row index 再 `setValue()`；刪除：`deleteRow`
 - ID 生成：`{prefix}_{yyyyMMddHHmmss}_{rand}`，從 ID 即可看出類型與建立時間
 - 時間戳：`new Date().toISOString()` 寫入 `created_at`
-- 回傳：`ContentService.createTextOutput(JSON.stringify(...)).setMimeType(JSON)`；統一 `{ ok, data, error?, code? }` 形狀
+- 回傳：`ContentService.createTextOutput(JSON.stringify(...)).setMimeType(JSON)`；統一 `{ ok, data, snapshot?, error?, code? }` 形狀
 - `initSheets()`：首次部署建立全域分頁與 L1 的整套分頁；既有分頁/設定不覆蓋
 - `createLedger()`：在編輯器改好開頭的參數後執行，建立新帳本（見「新增帳本」）
 - `migrateToLedgers()`：從單一帳本版本升級用，一次性（見「從單一帳本版本升級」）
@@ -133,6 +133,8 @@ npm run dev
 首次需在 Apps Script 編輯器手動跑一次 `initSheets()` 建立分頁與 header。
 
 讀取加速：在 Apps Script 編輯器左側「服務 → 新增」加入 **Google Sheets API**，`getAll` 會用 `batchGet` 一次讀完所有分頁（每讀一個分頁約 0.3 秒，分頁越多差越多）。沒加入或呼叫失敗時會自動退回逐頁讀取，只是比較慢。加入後要在編輯器執行任一函式完成授權，再部署新版本。免費，用量上限為每位使用者每分鐘 60 次讀取；網頁應用程式以「我」的身分執行，全家的讀取都算在同一個使用者。
+
+快取：`getAll` 的結果與 `Settings`（含管理員密碼）存在 Apps Script 的 CacheService，最多 6 小時，命中時不用開試算表。閒置後第一次開 App 或登入原本會卡十幾秒以上，有快取就不會。App 的寫入會自動清快取；直接在試算表上改儲存格的值（例如改 `Ledgers` 或 `admin_password`）會由 `onEdit` 清快取。刪除或插入整列、新增或刪除分頁不會觸發 `onEdit`，做完這類變動要在編輯器執行 `clearCache()`；其他情況改完 App 還是舊資料，也一樣執行 `clearCache()`。
 
 ## 新增帳本
 

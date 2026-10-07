@@ -180,6 +180,7 @@ function batchReadSheets(names) {
     valueRenderOption: 'UNFORMATTED_VALUE',
     dateTimeRenderOption: 'SERIAL_NUMBER'
   });
+  perfMark('batchGet');
   const tz = spreadsheet.getSpreadsheetTimeZone();
   const offsetByHour = {};
   const out = {};
@@ -188,6 +189,7 @@ function batchReadSheets(names) {
       typeof v === 'number' && DATE_COLUMNS.indexOf(header) >= 0 ? serialToIso(v, tz, offsetByHour) : v
     );
   });
+  perfMark('轉換日期與列');
   return out;
 }
 
@@ -197,10 +199,128 @@ function readSheets(names) {
     return batchReadSheets(names);
   } catch (err) {
     console.warn('batchReadSheets 失敗，改逐頁讀取：' + err.message);
+    perfMark('batchGet失敗');
     const out = {};
     names.forEach(n => { out[n] = readSheet(n); });
+    perfMark('逐頁讀取');
     return out;
   }
+}
+
+// ===== 分段計時 =====
+// 查「讀取偶爾很慢」用：每段耗時寫進「執行作業」的記錄，看是卡在開試算表、batchGet 還是快取
+let perfState = null;
+
+function perfStart() { perfState = { last: Date.now(), start: Date.now(), parts: [] }; }
+
+function perfMark(label) {
+  if (!perfState) return;
+  const now = Date.now();
+  perfState.parts.push(label + '=' + (now - perfState.last) + 'ms');
+  perfState.last = now;
+}
+
+function perfEnd(name) {
+  if (!perfState) return;
+  console.log(name + ' 總共 ' + (Date.now() - perfState.start) + 'ms：' + perfState.parts.join(' '));
+  perfState = null;
+}
+
+// ===== 快取 =====
+// 閒置一段時間後第一個開試算表的請求會卡十幾秒以上；命中快取就不用開試算表。
+// TTL 用上限 6 小時，太短的話閒置後快取跟著過期，等於沒快取。
+// App 的寫入在 doPost 清快取；直接改儲存格靠 onEdit 清，其他手動變動在編輯器執行 clearCache()
+const CACHE_TTL_SECONDS = 21600;
+const CACHE_KEY_GETALL = 'getAll';
+const CACHE_KEY_SETTINGS = 'settings';
+// 單一 key 上限 100KB；一個字元轉 UTF-8 最多 3 bytes，每塊 30000 字元最多 90KB
+const CACHE_CHUNK_CHARS = 30000;
+
+function scriptCache() { return CacheService.getScriptCache(); }
+
+// 不在 surrogate pair 中間切，避免存進去的字串不是合法 Unicode
+function splitChunks(text, size) {
+  const chunks = [];
+  let i = 0;
+  while (i < text.length) {
+    let end = Math.min(i + size, text.length);
+    const c = text.charCodeAt(end - 1);
+    if (end < text.length && c >= 0xD800 && c <= 0xDBFF) end--;
+    chunks.push(text.slice(i, end));
+    i = end;
+  }
+  return chunks;
+}
+
+// 塊的 key 帶版本號：舊版本的塊即使還沒過期，也不會跟新版本的塊混在一起讀
+function putCachedText(baseKey, text) {
+  const version = Utilities.getUuid();
+  const chunks = splitChunks(text, CACHE_CHUNK_CHARS);
+  const items = {};
+  chunks.forEach((c, i) => { items[baseKey + ':' + version + ':' + i] = c; });
+  const cache = scriptCache();
+  cache.putAll(items, CACHE_TTL_SECONDS);
+  cache.put(baseKey, JSON.stringify({ v: version, n: chunks.length }), CACHE_TTL_SECONDS);
+}
+
+// 任何一塊被提前清掉就當作沒命中
+function getCachedText(baseKey) {
+  const cache = scriptCache();
+  const metaText = cache.get(baseKey);
+  if (!metaText) return null;
+  const meta = JSON.parse(metaText);
+  const keys = [];
+  for (let i = 0; i < meta.n; i++) keys.push(baseKey + ':' + meta.v + ':' + i);
+  const got = cache.getAll(keys);
+  if (keys.some(k => got[k] === undefined || got[k] === null)) return null;
+  return keys.map(k => got[k]).join('');
+}
+
+function invalidateDataCache() { scriptCache().remove(CACHE_KEY_GETALL); }
+
+// 手動編輯與編輯器執行的函式走這裡，不經過 doPost 的鎖。要等正在讀試算表的 getAll 寫完快取再清，
+// 否則它會把編輯前讀到的資料寫回去。等不到鎖或拿鎖出錯都照清：最壞情況等同沒加鎖
+function invalidateAllCache() {
+  let lock = null;
+  try {
+    const l = LockService.getScriptLock();
+    if (l.tryLock(20000)) lock = l;
+  } catch (err) {
+    console.warn('清快取前拿鎖失敗，直接清：' + err.message);
+  }
+  try {
+    scriptCache().removeAll([CACHE_KEY_GETALL, CACHE_KEY_SETTINGS]);
+  } finally {
+    if (lock) lock.releaseLock();
+  }
+}
+
+// Settings 含 admin_password，只放在伺服器端快取，不會送到前端
+function readSettingsCached() {
+  const cached = scriptCache().get(CACHE_KEY_SETTINGS);
+  if (cached) {
+    perfMark('Settings命中快取');
+    return JSON.parse(cached);
+  }
+  // 沒命中不寫回快取：這裡沒拿鎖，寫回可能把 onEdit 剛清掉的舊密碼又放回去。快取由拿著鎖的 readSnapshot 填
+  const map = readSettings();
+  perfMark('讀Settings分頁');
+  return map;
+}
+
+// 在試算表上手動改儲存格時清快取。App 與 Sheets API 的寫入不會觸發 onEdit；
+// 刪除或插入整列、增刪分頁只會觸發 onChange（只能用可安裝觸發條件），要手動執行 clearCache()
+function onEdit() {
+  try {
+    invalidateAllCache();
+  } catch (err) {
+    console.warn('onEdit 清快取失敗：' + err.message);
+  }
+}
+
+// 手動改了試算表但 App 沒更新時，在編輯器選這個函式按「執行」
+function clearCache() {
+  invalidateAllCache();
 }
 
 function appendRow(name, obj) {
@@ -287,7 +407,7 @@ function readMemberIds(ledgerId) {
 }
 
 function verifyAdmin(password) {
-  const expected = String(readSettings().admin_password || '');
+  const expected = String(readSettingsCached().admin_password || '');
   return String(password || '') === expected && expected.length > 0;
 }
 
@@ -320,7 +440,7 @@ function weekdayOfDateStr(ymd) {
 function doGet(e) {
   try {
     const action = (e.parameter && e.parameter.action) || 'getAll';
-    if (action === 'getAll') return handleGetAll();
+    if (action === 'getAll') return handleGetAll(e.parameter && e.parameter.fresh === '1');
     if (action === 'ping') return okOut({ t: nowIso() });
     return errOut('Unknown action: ' + action);
   } catch (err) {
@@ -329,9 +449,11 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  perfStart();
+  let action = '';
   try {
     const body = e.postData && e.postData.contents ? JSON.parse(e.postData.contents) : {};
-    const action = body.action;
+    action = body.action;
     if (!action) return errOut('Missing action');
 
     if (action === 'login') return handleLogin(body);
@@ -353,39 +475,139 @@ function doPost(e) {
     } catch (err) {
       return errOut('系統忙碌中，請稍後再試');
     }
+    perfMark('等鎖');
     try {
-      switch (action) {
-        case 'addPlayer': return handleAddPlayer(body);
-        case 'updatePlayer': return handleUpdatePlayer(body);
-        case 'addMembers': return handleAddMembers(body);
-        case 'setMemberActive': return handleSetMemberActive(body);
-        case 'deleteTsumo': return handleDeleteTsumo(body);
-        case 'addRoundWithTsumos': return handleAddRoundWithTsumos(body);
-        case 'deleteRound': return handleDeleteRound(body);
-        case 'markWeekSettled': return handleMarkWeekSettled(body);
-        case 'addWithdrawal': return handleAddWithdrawal(body);
-        case 'deleteWithdrawal': return handleDeleteWithdrawal(body);
-        case 'updateLedger': return handleUpdateLedger(body);
-        default: return errOut('Unknown action: ' + action);
+      let out;
+      try {
+        out = runWriteAction(action, body);
+        perfMark('寫入');
+      } finally {
+        // 放鎖前先把寫入提交，否則下一個拿到鎖的請求可能還讀不到這次寫的列。
+        // 寫入失敗也清快取，可能已寫進一部分
+        SpreadsheetApp.flush();
+        invalidateDataCache();
+        perfMark('提交與清快取');
       }
+      return withSnapshot(out);
     } finally {
-      // 放鎖前先把寫入提交，否則下一個拿到鎖的請求可能還讀不到這次寫的列
-      SpreadsheetApp.flush();
       lock.releaseLock();
     }
   } catch (err) {
     return errOut(err.message);
+  } finally {
+    perfEnd('doPost ' + action);
   }
 }
 
 // ===== Handlers =====
-function handleGetAll() {
+function textOut(text) {
+  return ContentService.createTextOutput(text).setMimeType(ContentService.MimeType.JSON);
+}
+
+function getAllText(snapshotText) { return '{"ok":true,"data":' + snapshotText + '}'; }
+
+// 寫快取失敗不影響回應，只是下次讀取沒命中
+function cacheGetAllText(text) {
+  try {
+    putCachedText(CACHE_KEY_GETALL, text);
+  } catch (err) {
+    console.warn('getAll 寫快取失敗：' + err.message);
+  }
+}
+
+function runWriteAction(action, body) {
+  switch (action) {
+    case 'addPlayer': return handleAddPlayer(body);
+    case 'updatePlayer': return handleUpdatePlayer(body);
+    case 'addMembers': return handleAddMembers(body);
+    case 'setMemberActive': return handleSetMemberActive(body);
+    case 'deleteTsumo': return handleDeleteTsumo(body);
+    case 'addRoundWithTsumos': return handleAddRoundWithTsumos(body);
+    case 'deleteRound': return handleDeleteRound(body);
+    case 'markWeekSettled': return handleMarkWeekSettled(body);
+    case 'addWithdrawal': return handleAddWithdrawal(body);
+    case 'deleteWithdrawal': return handleDeleteWithdrawal(body);
+    case 'updateLedger': return handleUpdateLedger(body);
+    default: return errOut('Unknown action: ' + action);
+  }
+}
+
+// 寫入成功時在回應附上整份最新資料（snapshot），前端不用再打一次 getAll；
+// 還持有鎖，順便寫回快取。讀取失敗不影響已完成的寫入，回應不帶 snapshot，前端會自己再讀
+function withSnapshot(out) {
+  const result = JSON.parse(out.getContent());
+  if (!result.ok) return out;
+  let snapText;
+  try {
+    snapText = JSON.stringify(readSnapshot(true));
+  } catch (err) {
+    console.warn('寫入後讀取 snapshot 失敗：' + err.message);
+    return out;
+  }
+  cacheGetAllText(getAllText(snapText));
+  return textOut('{"ok":true,"data":' + JSON.stringify(result.data) + ',"snapshot":' + snapText + '}');
+}
+
+
+// 沒命中時在 script lock 裡讀試算表再寫快取：寫入也拿同一把鎖並在放鎖前清快取，
+// 才不會把寫入前讀到的舊資料寫回快取。同時沒命中的請求排隊，後到的直接讀前一個寫好的快取
+// fresh：前端寫入逾時後用。寫入還在跑時快取仍是寫入前的資料，所以跳過第一次讀快取，
+// 直接排隊等寫入放鎖；等不到鎖時回錯誤而不是可能過時的資料
+function handleGetAll(fresh) {
+  perfStart();
+  let outcome = fresh ? '沒命中（fresh）' : '沒命中';
+  try {
+    if (!fresh) {
+      const cached = getCachedText(CACHE_KEY_GETALL);
+      perfMark('讀快取');
+      if (cached) {
+        outcome = '命中快取';
+        return textOut(cached);
+      }
+    }
+
+    const lock = LockService.getScriptLock();
+    try {
+      lock.waitLock(10000);
+    } catch (err) {
+      outcome = '拿不到鎖';
+      if (fresh) return errOut('系統忙碌中，請稍後再試');
+      // 拿不到鎖就不寫快取，照樣回資料
+      return okOut(readSnapshot(false));
+    }
+    perfMark('等鎖');
+    try {
+      const again = getCachedText(CACHE_KEY_GETALL);
+      perfMark('再讀快取');
+      if (again) {
+        outcome = '等鎖後命中快取';
+        return textOut(again);
+      }
+      const snapText = JSON.stringify(readSnapshot(true));
+      perfMark('轉JSON');
+      const text = getAllText(snapText);
+      cacheGetAllText(text);
+      perfMark('寫快取');
+      return textOut(text);
+    } finally {
+      lock.releaseLock();
+    }
+  } finally {
+    perfEnd('getAll ' + outcome);
+  }
+}
+
+// cacheSettings 只有拿著 script lock 的呼叫端可以傳 true，理由同 readSettingsCached
+function readSnapshot(cacheSettings) {
   const sheetNames = new Set(ss().getSheets().map(sh => sh.getName()));
+  perfMark('開試算表與列分頁');
   const ledgerTabs = [...sheetNames].filter(n => LEDGER_SHEETS.some(s => n.indexOf(s.base + '__') === 0));
   const data = readSheets([SHEET_SETTINGS, SHEET_PLAYERS, SHEET_LEDGERS].concat(ledgerTabs));
 
   const settings = {};
   data[SHEET_SETTINGS].forEach(r => { if (r.key) settings[r.key] = r.value; });
+  // 順便把完整 Settings 放進快取，之後登入驗密碼不用再開試算表
+  if (cacheSettings) scriptCache().put(CACHE_KEY_SETTINGS, JSON.stringify(settings), CACHE_TTL_SECONDS);
   delete settings.admin_password;
 
   const rows = data[SHEET_LEDGERS];
@@ -417,7 +639,8 @@ function handleGetAll() {
       };
     })
     .sort((a, b) => ledgerNumber(a.id) - ledgerNumber(b.id));
-  return okOut({ settings: settings, players: data[SHEET_PLAYERS], ledgers: ledgers });
+  perfMark('組帳本資料');
+  return { settings: settings, players: data[SHEET_PLAYERS], ledgers: ledgers };
 }
 
 function handleLogin(body) {
@@ -731,6 +954,7 @@ function createLedger() {
     settle_weekday: String(input.settle_weekday).trim(),
     created_at: nowIso()
   });
+  invalidateAllCache();
   ui.alert('已建立帳本 ' + id + '：' + String(input.name).trim());
 }
 
@@ -789,6 +1013,7 @@ function migrateToLedgers() {
     if (movedKeys.indexOf(String(settingValues[i][0])) >= 0) settingsSheet.deleteRow(i + 1);
   }
 
+  invalidateAllCache();
   ui.alert('Migration 完成：原本的資料已成為帳本 L1。');
 }
 
@@ -830,5 +1055,6 @@ function initSheets() {
     });
   }
 
+  invalidateAllCache();
   ui.alert('初始化完成！請到 Settings 分頁修改預設密碼 (admin_password)。');
 }

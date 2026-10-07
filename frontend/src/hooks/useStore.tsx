@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode
 } from 'react';
-import { api } from '../lib/api';
+import { api, TIMEOUT_CODE } from '../lib/api';
 import { buildLedgerView, resolveLedgerId } from '../lib/utils';
 import {
   ApiError,
@@ -28,7 +28,8 @@ const PASSWORD_KEY = 'mtf_password';
 const LEDGER_KEY = 'mtf_ledger';
 
 interface StoreActions {
-  login: (pw: string) => Promise<boolean>;
+  // 'error' 是連線問題（例如逾時），不是密碼錯，畫面不該叫使用者重打密碼
+  login: (pw: string) => Promise<'ok' | 'invalid' | 'error'>;
   logout: () => void;
 
   selectLedger: (id: Id) => void;
@@ -167,19 +168,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setTimeout(() => setToast(null), 2400);
   }, []);
 
+  // 不走 refresh：refresh 失敗會把整個畫面換成錯誤頁，正在填的表單會不見
+  const resyncAfterWriteTimeout = useCallback(async () => {
+    try {
+      setSnapshot(await api.getAllAfterWrite());
+      showToast('已重新讀取最新資料，請確認剛才的操作有沒有成功');
+    } catch {
+      showToast('還是讀不到最新資料，請稍後重新整理確認，不要重複送出', 'error');
+    }
+  }, [showToast]);
+
   const wrap = useCallback(
-    <Args extends unknown[], R>(
-      fn: (pw: string, ...args: Args) => Promise<R>,
+    <Args extends unknown[]>(
+      fn: (pw: string, ...args: Args) => Promise<Snapshot | undefined>,
       okMsg?: string
     ) =>
-      async (...args: Args): Promise<R> => {
+      async (...args: Args): Promise<void> => {
         if (!password) throw new ApiError('未登入');
         setPendingWrites((n) => n + 1);
         try {
-          const r = await fn(password, ...args);
-          await refresh();
+          const snap = await fn(password, ...args);
+          if (snap) setSnapshot(snap);
+          else await refresh();
           if (okMsg) showToast(okMsg);
-          return r;
         } catch (e) {
           if (e instanceof ApiError && e.code === 'UNAUTHORIZED') {
             showToast('登入已失效，請重新登入', 'error');
@@ -187,13 +198,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           } else {
             const msg = e instanceof Error ? e.message : '操作失敗';
             showToast(msg || '操作失敗', 'error');
+            // 逾時時後端可能已經寫入，重讀一次讓畫面跟上，免得使用者以為沒存又送一次
+            if (e instanceof ApiError && e.code === TIMEOUT_CODE) void resyncAfterWriteTimeout();
           }
           throw e;
         } finally {
           setPendingWrites((n) => n - 1);
         }
       },
-    [password, refresh, showToast, setPassword]
+    [password, refresh, showToast, setPassword, resyncAfterWriteTimeout]
   );
 
   const requireLedgerId = (): Id => {
@@ -207,11 +220,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         await api.login(pw);
         setPassword(pw);
         showToast('登入成功');
-        return true;
+        return 'ok';
       } catch (e) {
         const msg = e instanceof Error ? e.message : '密碼錯誤';
         showToast(msg || '密碼錯誤', 'error');
-        return false;
+        return e instanceof ApiError && e.code === 'INVALID_PASSWORD' ? 'invalid' : 'error';
       }
     },
     logout: () => {
